@@ -34,9 +34,9 @@ We can make an instance of the class and set its value.
 ```pycon
 >>> from test import Immutable
 >>> immutable = Immutable()
->>> immutable.value = 10
+>>> immutable.value = "value"
 >>> immutable.value
-10
+'value'
 ```
 
 However, once the object is frozen, its value cannot be set further.
@@ -44,10 +44,10 @@ However, once the object is frozen, its value cannot be set further.
 ```pycon
 >>> immutable.freeze()
 >>> try:
-... 	immutable.value = 10
+... 	immutable.value = "new value"
 ... except:
 ... 	print("Cannot assign frozen attribute.")
 Cannot assign frozen attribute.
 >>> immutable.value
-10
+'value'
 ```
