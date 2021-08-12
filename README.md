@@ -27,25 +27,27 @@ class Immutable:
 	@freezablemethod
 	def value(self, value):
 		self._value = value
-
-	# We override the `__frozen_error__` method to print appropriate messages.
-	def __frozen_error__(self, method):
-		print(f"Can not set `{method.__name__}` on frozen `{type(self).__name__}` object.")
-
-
-immutable = Immutable()
-immutable.value = 10
-print(f"The assigned value is {immutable.value}.")
-
-immutable.freeze()
-immutable.value = 20
-print(f"The assigned value is still {immutable.value}.")
 ``` 
 
-The excerpt above prints the following output:
+We can make an instance of the class and set its value.
 
 ```pycon
-The assigned value is 10.
-Can not set `value` on frozen `Immutable` object.
-The assigned value is still 10.
+>>> from test import Immutable
+>>> immutable = Immutable()
+>>> immutable.value = 10
+>>> immutable.value
+10
+```
+
+However, once the object is frozen, its value cannot be set further.
+
+```pycon
+>>> immutable.freeze()
+>>> try:
+... 	immutable.value = 10
+... except:
+... 	print("Cannot assign frozen attribute.")
+Cannot assign frozen attribute.
+>>> immutable.value
+10
 ```
