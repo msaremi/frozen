@@ -48,5 +48,5 @@ The excerpt above prints the following output:
 ```pycon
 The assigned value is 10.
 `Immutable` object is frozen; cannot set `value`.
-The assigned value is still 20.
+The assigned value is still 10.
 ```

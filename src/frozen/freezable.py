@@ -168,13 +168,14 @@ class FreezableMethod(MethodDecorator):
 		
 		def freezable_wrapper(method_self, *args, **kwargs):
 			# noinspection PyProtectedMember
+			# TODO: Remove the try-except if not necessary
 			try:
 				if method_self.__frozen__:
 					method_self.__frozen_error__(method)
+				else:
+					return method(method_self, *args, **kwargs)
 			except AttributeError:
-				pass
-
-			return method(method_self, *args, **kwargs)
+				return method(method_self, *args, **kwargs)
 
 		return super().__call__(method, freezable_wrapper)
 

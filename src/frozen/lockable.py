@@ -233,10 +233,10 @@ class LockableMethod(MethodDecorator):
 
 				if keys:
 					method_self.__locked_error__(next(iter(keys)), method)
+				else:
+					return method(method_self, *args, **kwargs)
 			except AttributeError:
-				pass
-
-			return method(method_self, *args, **kwargs)
+				return method(method_self, *args, **kwargs)
 
 		return super().__call__(method, lockable_wrapper)
 
