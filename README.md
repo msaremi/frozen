@@ -9,7 +9,7 @@ As a simple example, we make a freezable class that can be arbitrarily frozen.
 We use the `@freezableclass` and `@freezablemethod` decorators.
 
 ```python
-from frozen import freezableclass, freezablemethod, FrozenError
+from frozen import freezableclass, freezablemethod
 
 
 # A freezable class the can be frozen on upon desire

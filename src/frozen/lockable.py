@@ -227,15 +227,11 @@ class LockableMethod(MethodDecorator):
 		super().__call__(method)
 
 		def lockable_wrapper(method_self, *args, **kwargs):
-			# noinspection PyProtectedMember
-			try:
-				keys = self._keys.intersection(method_self.__locks__)
+			keys = self._keys.intersection(method_self.__locks__)
 
-				if keys:
-					method_self.__locked_error__(next(iter(keys)), method)
-				else:
-					return method(method_self, *args, **kwargs)
-			except AttributeError:
+			if keys:
+				method_self.__locked_error__(next(iter(keys)), method)
+			else:
 				return method(method_self, *args, **kwargs)
 
 		return super().__call__(method, lockable_wrapper)

@@ -1,4 +1,5 @@
 import inspect
+import types
 import typing
 import itertools
 from collections import deque
@@ -122,6 +123,89 @@ class DecorationUsageError(Exception):
 
 
 class ClassDecorator:
+	class ObjectView(object):
+		_proxy_cache = dict()
+		_obj = None  # Necessary for the class to detect it as a member
+
+		def __init__(self, obj):
+			self._obj = obj
+
+		def __getattribute__(self, item):
+			try:
+				return object.__getattribute__(self, item)
+			except AttributeError:
+				value = getattr(self._obj, item)
+
+				# If the member of obj is a method, we'll pass the proxy to it, instead of obj
+				if isinstance(value, types.MethodType):
+					value = getattr(type(self._obj), item)
+					return value.__get__(self, type(self))
+				# If the member is of one of the following type, return its view()
+				# The view() method of ClassDecorator returns an ObjectView.
+				# This makes recursive proxying possible.
+				elif isinstance(value, ClassDecorator.ClassWrapper):
+					return value.view()
+				else:
+					return value
+
+		def __setattr__(self, key, value):
+			try:
+				object.__getattribute__(self, key)  # Raises error if key is not in self
+				object.__setattr__(self, key, value)
+			except AttributeError:
+				setattr(self._obj, key, value)
+
+		def __delattr__(self, item):
+			try:
+				object.__getattribute__(self, item)
+				object.__delattr__(self, item)
+			except AttributeError:
+				return delattr(self._obj, item)
+
+		@classmethod
+		def _create_class_proxy(cls, object_class):
+			"""
+			The factory method that creates a proxy class based on class `object_class`
+			:param object_class: The type based on which the proxy class will be create
+			:return: The proxy class
+			"""
+			def make_method(method_name):
+				def method(self, *args, **kw):
+					return getattr(self._obj, method_name)(*args, **kw)
+
+				return method
+
+			# The dictionary holds python's special methods present in object_class
+			special_methods = dict()
+
+			for name in dir(object_class):
+				value = getattr(object_class, name)
+
+				if (
+						not hasattr(cls, name) and (  # if this cls does not have the method (we don't want to override this methods)
+							isinstance(value, types.WrapperDescriptorType) or  # type(object.__init__)
+							isinstance(value, types.MethodDescriptorType)  # type(str.join)
+						)
+				):
+					special_methods[name] = make_method(name)
+
+			return type(f"{cls.__name__}({object_class.__qualname__})", (cls,), special_methods)
+
+		def __new__(cls, obj, *args, **kwargs):
+			"""
+			Creates a new Proxy(type(obj)) class
+			:param obj: The object for whose type the proxy is created/returned.
+			:param args:
+			:param kwargs:
+			"""
+			try:
+				proxy_class = cls._proxy_cache[type(obj)]
+			except KeyError:
+				proxy_class = cls._create_class_proxy(type(obj))
+				cls._proxy_cache[type(obj)] = proxy_class
+
+			return object.__new__(proxy_class)
+
 	class ClassWrapper:
 		__specs = dict()
 
@@ -149,7 +233,7 @@ class ClassDecorator:
 					if not issubclass(wrapped_class, ClassDecorator.ClassWrapper):
 						break
 
-				self.__specs[calling_class] = (
+				ClassDecorator.ClassWrapper.__specs[calling_class] = (
 					inspect.getfullargspec(wrapped_class.__init__),
 					inspect.getfullargspec(calling_class.__construct__)
 				)
@@ -158,7 +242,10 @@ class ClassDecorator:
 			calling_class.__construct__(self, **kwargs)
 
 		def __construct__(self, **kwargs):
-			pass
+			raise NotImplementedError(f"{self.__construct__.__qualname__} method is not implemented.")
+
+		def view(self):
+			raise NotImplementedError(f"{self.view.__qualname__} method is not implemented.")
 
 	_decorator_function = None
 	_method_decorator = None

@@ -48,9 +48,14 @@ class FreezableClass(ClassDecorator):
 					f"It needs a positional 'self' parameter and a 'deep' parameter."
 				)
 
+		class FreezableView(ClassDecorator.ObjectView):
+			def __init__(self, obj):
+				ClassDecorator.ObjectView.__init__(self, obj)
+
 		class FreezableWrapper(cls, ClassDecorator.ClassWrapper):
 			def __init__(self, *args, **kwargs):
 				super().__init__(*args, **kwargs)
+				self._view = None
 				ClassDecorator.ClassWrapper.__init__(self, FreezableWrapper, *args, **kwargs)
 
 			def __construct__(self, frozen: bool = False):
@@ -151,6 +156,12 @@ class FreezableClass(ClassDecorator):
 
 				return new_obj
 
+			def view(self):
+				if self._view is None:
+					self._view = FreezableView(self)
+
+				return self._view
+
 		return FreezableWrapper
 
 
@@ -167,14 +178,12 @@ class FreezableMethod(MethodDecorator):
 		super().__call__(method)
 		
 		def freezable_wrapper(method_self, *args, **kwargs):
-			# noinspection PyProtectedMember
-			# TODO: Remove the try-except if not necessary
-			try:
-				if method_self.__frozen__:
-					method_self.__frozen_error__(method)
-				else:
-					return method(method_self, *args, **kwargs)
-			except AttributeError:
+			if isinstance(method_self, ClassDecorator.ObjectView):
+				# noinspection PyProtectedMember
+				method_self._obj.__frozen_error__(method)
+			elif method_self.__frozen__:
+				method_self.__frozen_error__(method)
+			else:
 				return method(method_self, *args, **kwargs)
 
 		return super().__call__(method, freezable_wrapper)
