@@ -1,3 +1,4 @@
+import weakref
 import inspect
 import types
 import typing
@@ -5,11 +6,27 @@ import itertools
 from collections import deque
 
 
+class Errors:
+	"""
+	List of error messages in this module. For internal use. Can be extended by other modules.
+	"""
+	MethodNotImplemented = \
+		"`{}` method is not implemented."
+	CallWithClassArg = \
+		"`{}` class can only be called with class arguments."
+	CallWithMethodArg = \
+		"`{}` class can only be called with method arguments."
+	ClassNotFinalized = \
+		"`{}` class has not been finalized using a `{}` decorator."
+
+
 def trace_execution(location_hint: typing.Iterable[type] = None):
 	"""
 	Yields the list of (method, class)'s of the current execution frame
-	:param location_hint: List of candidate locations classes to search in
-	:return:
+	If the methods are not @staticmethod the algorithm finds the classes directly
+	If the methods are @staticmethod the algorithm searches in `locations_hint` and their subclasses
+	:param location_hint: List of candidate classes to search in
+	:return: yields (method, location) frame-by-frame in execution stack
 	"""
 	# Search in all candidate classes for the object
 	def search_locations(search_in: typing.Iterable[type]):
@@ -67,8 +84,8 @@ def get_object_descendents(
 	"""
 	Yields descendents of an object
 	:param obj: The object to be inspected
-	:param include_methods:  Yield also the member methods
-	:return:
+	:param include_methods: Yield as well the member methods
+	:return: Yield list of descendent objects of the current object
 	"""
 	queue: typing.Deque[object] = deque({obj})
 	visited: typing.Set[int] = {id(obj)}
@@ -84,12 +101,12 @@ def get_object_descendents(
 				not inspect.isbuiltin(x) and  # filters build-in members
 				not isinstance(x, type) and  # filters type objects
 				not id(x) in visited and (  # filters visited members to avoid infinite cycles
-						include_methods or not (
-								inspect.ismethod(x) or  # filters object methods, class methods, lambdas, and method attributes
-								inspect.isfunction(x)  # filters static methods
-							)
+					include_methods or not (
+						inspect.ismethod(x) or  # filters object methods, class methods, lambdas, and method attributes
+						inspect.isfunction(x)  # filters static methods
 					)
-			)
+				)
+		)
 
 		for name, obj in members:
 			if not name.startswith('__'):  # filters private members
@@ -98,24 +115,42 @@ def get_object_descendents(
 
 
 def tailor_arguments(
-		input_spec: inspect.FullArgSpec,
-		output_spec: inspect.FullArgSpec,
+		intended_method: typing.Callable,
+		augmented_method: typing.Callable,
+		has_self: bool = True,
 		*args, **kwargs
 ):
 	"""
 	Tailors the argument list prepared for one function to be fit to another
-	:param input_spec:
-	:param output_spec:
-	:param args:
-	:param kwargs:
+	:param intended_method:
+	:param augmented_method:
+	:param has_self: If the functions take the 'self' argument
+	:param args: List of positional arguments
+	:param kwargs: Dictionary of keyword arguments
 	:return: Tailored kwargs
 	"""
-	kwargs.update(dict(zip(input_spec.args[1:], args)))
+	try:
+		intended_spec = inspect.getfullargspec(intended_method)
+	except KeyError:
+		intended_spec = inspect.getfullargspec(intended_method)
+		tailor_arguments.cache[intended_method] = intended_spec
 
-	if not output_spec.varkw:
-		kwargs = dict((k, kwargs[k]) for k in output_spec.args if k in kwargs)
+	try:
+		augmented_spec = inspect.getfullargspec(augmented_method)
+	except KeyError:
+		augmented_spec = inspect.getfullargspec(augmented_method)
+		tailor_arguments.cache[augmented_method] = augmented_spec
 
-	return kwargs
+	intended_kwargs = kwargs if intended_spec.varkw else dict(
+		(k, kwargs[k]) for k in intended_spec.args if k in kwargs
+	)
+	start = 1 if has_self else 0
+	kwargs.update(dict(zip(intended_spec.args[start:], args[start:])))
+	augmented_kwargs = kwargs if augmented_spec.varkw else dict(
+		(k, kwargs[k]) for k in augmented_spec.args if k in kwargs
+	)
+
+	return intended_kwargs, augmented_kwargs
 
 
 class DecorationUsageError(Exception):
@@ -124,21 +159,21 @@ class DecorationUsageError(Exception):
 
 class ClassDecorator:
 	class ObjectView(object):
-		_proxy_cache = dict()
-		_obj = None  # Necessary for the class to detect it as a member
+		__proxy_cache = dict()
+		__obj = None  # Necessary for the class to detect it as a member
 
 		def __init__(self, obj):
-			self._obj = obj
+			self.__obj = obj
 
 		def __getattribute__(self, item):
 			try:
 				return object.__getattribute__(self, item)
 			except AttributeError:
-				value = getattr(self._obj, item)
+				value = getattr(self.__obj, item)
 
 				# If the member of obj is a method, we'll pass the proxy to it, instead of obj
 				if isinstance(value, types.MethodType):
-					value = getattr(type(self._obj), item)
+					value = getattr(type(self.__obj), item)
 					return value.__get__(self, type(self))
 				# If the member is of one of the following type, return its view()
 				# The view() method of ClassDecorator returns an ObjectView.
@@ -153,14 +188,14 @@ class ClassDecorator:
 				object.__getattribute__(self, key)  # Raises error if key is not in self
 				object.__setattr__(self, key, value)
 			except AttributeError:
-				setattr(self._obj, key, value)
+				setattr(self.__obj, key, value)
 
 		def __delattr__(self, item):
 			try:
 				object.__getattribute__(self, item)
 				object.__delattr__(self, item)
 			except AttributeError:
-				return delattr(self._obj, item)
+				return delattr(self.__obj, item)
 
 		@classmethod
 		def _create_class_proxy(cls, object_class):
@@ -199,10 +234,10 @@ class ClassDecorator:
 			:param kwargs:
 			"""
 			try:
-				proxy_class = cls._proxy_cache[type(obj)]
+				proxy_class = cls.__proxy_cache[type(obj)]
 			except KeyError:
 				proxy_class = cls._create_class_proxy(type(obj))
-				cls._proxy_cache[type(obj)] = proxy_class
+				cls.__proxy_cache[type(obj)] = proxy_class
 
 			return object.__new__(proxy_class)
 
@@ -211,13 +246,13 @@ class ClassDecorator:
 
 		def __init_subclass__(cls, **kwargs):
 			parent = cls.__mro__[1]
-			cls.__name__ = parent.__name__
+			cls.__name__ = f"{cls.__name__}({parent.__name__})"
 			cls.__qualname__ = parent.__qualname__
 			cls.__doc__ = parent.__doc__
 			cls.__module__ = parent.__module__
 			pass
 
-		def __init__(self, calling_class, *args, **kwargs):
+		def __init__(self, calling_class, wrapped_class, *args, **kwargs):
 			"""
 			__init__ super-method to be overridden by ClassWrappers
 			overriding
@@ -225,27 +260,21 @@ class ClassDecorator:
 			:param args:
 			:param kwargs:
 			"""
-			if calling_class not in self.__specs:
-				wrapped_class = type(self)
-
-				# Find the first non-wrapped class to extract its __init__ signature
-				for wrapped_class in wrapped_class.mro():
-					if not issubclass(wrapped_class, ClassDecorator.ClassWrapper):
-						break
-
-				ClassDecorator.ClassWrapper.__specs[calling_class] = (
-					inspect.getfullargspec(wrapped_class.__init__),
-					inspect.getfullargspec(calling_class.__construct__)
-				)
-
-			kwargs = tailor_arguments(*self.__specs[calling_class], *args, **kwargs)
-			calling_class.__construct__(self, **kwargs)
+			# Find the first non-wrapped class to extract its __init__ signature
+			intended_class = next(
+				(cls for cls in type(self).mro() if not issubclass(cls, ClassDecorator.ClassWrapper)),
+			)
+			intended_kwargs, construct_kwargs = tailor_arguments(
+				intended_class.__init__, calling_class.__construct__, True, self, *args, **kwargs
+			)
+			calling_class.__construct__(self, **construct_kwargs)
+			wrapped_class.__init__(self, *args, **intended_kwargs)
 
 		def __construct__(self, **kwargs):
-			raise NotImplementedError(f"{self.__construct__.__qualname__} method is not implemented.")
+			raise NotImplementedError(Errors.MethodNotImplemented.format(self.__construct__.__qualname__))
 
 		def view(self):
-			raise NotImplementedError(f"{self.view.__qualname__} method is not implemented.")
+			raise NotImplementedError(Errors.MethodNotImplemented.format(self.view.__qualname__))
 
 	_decorator_function = None
 	_method_decorator = None
@@ -253,7 +282,7 @@ class ClassDecorator:
 	# noinspection PyProtectedMember
 	def __call__(self, cls):
 		if not inspect.isclass(cls):
-			raise TypeError(f"Class {type(self).__name__} can only be called with class arguments.")
+			raise TypeError(Errors.CallWithClassArg.format(type(self).__name__))
 
 		if self._decorator_function.__name__ in MethodDecorator._current_class_decorators:
 			MethodDecorator._current_class_decorators.remove(self._decorator_function.__name__)  # Reset the checker
@@ -268,7 +297,7 @@ class MethodDecorator:
 	def __call__(self, method: typing.Callable, wrapper: typing.Callable = None):
 		if wrapper is None:
 			if not inspect.isfunction(method):  # Remember that methods are functions before they are bound to classes
-				raise TypeError(f"Class {type(self).__name__} can only be called with method arguments.")
+				raise TypeError(Errors.CallWithMethodArg.format(type(self).__name__))
 
 			method_spec = {
 				'module': inspect.getmodule(method),
@@ -286,11 +315,13 @@ class MethodDecorator:
 				MethodDecorator._current_class_decorators.add(decorator_name)
 			else:
 				raise DecorationUsageError(
-					f"Class `{MethodDecorator._last_decorated_method_spec['class']}` has not been "
-					f"finalized using a `@{MethodDecorator._current_class_decorators.pop()}` decorator. "
+					Errors.ClassNotFinalized.format(
+						MethodDecorator._last_decorated_method_spec['class'],
+						MethodDecorator._current_class_decorators.pop()
+					)
 				)
 		else:
-			wrapper.__name__ = method.__name__
+			wrapper.__name__ = f"{wrapper.__name__}({method.__name__})"
 			wrapper.__qualname__ = method.__qualname__
 			wrapper.__doc__ = method.__doc__
 			# noinspection PyUnresolvedReferences
@@ -298,5 +329,20 @@ class MethodDecorator:
 			return wrapper
 
 
+class ModuleElements:
+	def __init__(self, mth: typing.Callable, cls: typing.Callable):
+		self._mth = mth
+		self._cls = cls
+
+	@property
+	def mth(self):
+		return self._mth
+
+	@property
+	def cls(self):
+		return self._cls
+
+
 trace_execution.cache = dict()
 trace_execution.cache_max_len = 1024
+tailor_arguments.cache = weakref.WeakKeyDictionary()

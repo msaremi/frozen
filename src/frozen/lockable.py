@@ -2,6 +2,20 @@ from .core import *
 from collections import defaultdict
 
 
+class Errors(Errors):
+	NoLocksDefined = \
+		"No locks have been defined for `{}`. " \
+		"Use `lock_permissions` to define the locks."
+	CallingLockedMethod = \
+		"`{}` method is locked with key '{}'."
+	LockingNotAllowed = \
+		"`{}` objects are not allowed to lock `{}` objects using '{}' key."
+	UnlockingNotAllowed = \
+		"`{}` objects are not allowed to unlock `{}` objects using '{}' key."
+	UnrecognizedKey = \
+		"Unrecognized key '{}'."
+
+
 class LockedError(PermissionError):
 	pass
 
@@ -38,10 +52,7 @@ class LockableClass(ClassDecorator):
 		:param unlock_permissions: Same as `lock_permissions`
 		"""
 		if lock_permissions is None:
-			raise ValueError(
-				f"No locks have been defined for `@{self._decorator_function}`. "
-				f"Use `lock_permissions` to define the locks."
-			)
+			raise ValueError(Errors.NoLocksDefined.format(self._decorator_function))
 
 		if unlock_permissions is None:
 			unlock_permissions = lock_permissions
@@ -66,11 +77,9 @@ class LockableClass(ClassDecorator):
 
 		class LockableWrapper(cls, ClassDecorator.ClassWrapper):
 			def __init__(self, *args, **kwargs):
-				# Don't use super() in this context; it's not the usual inheritence patter.
-				# In case of super(), if cls does not define __init__,
-				# then the MRO proceeds to run ClassDecorator.ClassWrapper.__init__
-				cls.__init__(self, *args, **kwargs)
-				ClassDecorator.ClassWrapper.__init__(self, LockableWrapper, *args, **kwargs)
+				# This will call LockableWrapper.__construct__ and then cls.__init__
+				self.__view = None
+				ClassDecorator.ClassWrapper.__init__(self, LockableWrapper, cls, *args, **kwargs)
 
 			def __construct__(self, locks: typing.Iterable[str] = None):
 				self.__locks__ = set()
@@ -90,9 +99,7 @@ class LockableClass(ClassDecorator):
 					# noinspection PyUnresolvedReferences
 					super().__locked_error__(key=str, method=method)
 				except AttributeError:
-					raise LockedError(
-						f"`{method.__qualname__}` method is locked with key '{key}'."
-					) from None
+					raise LockedError(Errors.CallingLockedMethod.format(method.__qualname__, key)) from None
 
 			def __lock_error__(self, key: str, calling_cls):
 				"""
@@ -105,11 +112,9 @@ class LockableClass(ClassDecorator):
 					# noinspection PyUnresolvedReferences
 					super().__lock_error__(key=key, cls=calling_cls)
 				except AttributeError:
-					raise LockError(
-						("Functions " if calling_cls is None else f"`{calling_cls.__qualname__}` objects ") +
-						f"are not allowed to lock `{type(self).__qualname__}` objects using "
-						f"'{key}' key."
-					) from None
+					raise LockError(Errors.LockingNotAllowed.format(
+						None if calling_cls is None else calling_cls.__qualname__, type(self).__qualname__, key
+					)) from None
 
 			def __unlock_error__(self, key: str, calling_cls):
 				"""
@@ -122,11 +127,9 @@ class LockableClass(ClassDecorator):
 					# noinspection PyUnresolvedReferences
 					super().__unlock_error__(key=key, cls=calling_cls)
 				except AttributeError:
-					raise UnlockError(
-						("Functions " if calling_cls is None else f"`{calling_cls.__qualname__}` objects ") +
-						f"are not allowed to unlock `{type(self).__qualname__}` objects using "
-						f"'{key}' key."
-					) from None
+					raise UnlockError(Errors.UnlockingNotAllowed.format(
+						None if calling_cls is None else calling_cls.__qualname__, type(self).__qualname__, key
+					)) from None
 
 			def __lock_key_error__(self, key: str):
 				"""
@@ -138,9 +141,7 @@ class LockableClass(ClassDecorator):
 					# noinspection PyUnresolvedReferences
 					super().__lock_key_error__(key=key, cls=calling_cls)
 				except AttributeError:
-					raise KeyError(
-						f"Unrecognized key '{key}'."
-					) from None
+					raise KeyError(Errors.UnrecognizedKey.format(key)) from None
 
 			# noinspection PyMethodParameters
 			def lock(cls_self, key: str):
@@ -208,6 +209,10 @@ class LockableClass(ClassDecorator):
 				else:
 					cls_self.__lock_key_error__(key)
 
+			def view(self):
+				# TODO: Implement this
+				raise NotImplementedError("Not implemented yet. Stay tuned!")
+
 		return LockableWrapper
 
 
@@ -241,3 +246,4 @@ LockableClass._decorator_function = lockableclass
 LockableClass._method_decorator = LockableMethod
 LockableMethod._decorator_function = lockablemethod
 LockableMethod._class_decorator = LockableClass
+lockable = ModuleElements(mth=lockablemethod, cls=lockableclass)
