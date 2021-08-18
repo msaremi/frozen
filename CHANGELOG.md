@@ -1,5 +1,49 @@
 # Changelog
 
+## Version `0.0.3`
+
+### Major changes
+- Implemented `view()` for `lockable` objects.
+    - [lockable.py](src/frozen/lockable.py)
+        - 088: Class `LockableView` implemented.
+        - 077: Method `lockable_wrapper` updated to incorporate "view" objects.
+- A class can now lock/unlock itself.
+    - [lockable.py](src/frozen/lockable.py)
+        - 251-257: Add `cls` to list of lock/unlock permissions.
+- Improved `lockable.cls` input permission data types.
+    - [lockable.py](src/frozen/lockable.py)
+        - 056, 063: Change values to typing.Dict[str, typing.Set[type]].
+- Fixed a problem of re-naming the dunders of child classes of wrappers.
+    - [core.py](src/frozen/core.py)
+        - 258: Removed `__init_subclass__`, which was called for every sub-class, not only wrappers.
+        - 286: Reimplemented `__call__` to rename the wrapper class dunders; 
+        now the wrapper classes call `ClassDecorator.__call__` twice.
+- Changed the renaming strategy of class and method wrapper dunder re-naming.
+    - [core.py](src/frozen/core.py)
+        - 293: New naming strategy. Now a "@{wrapper.__name__}" is added before the wrapped class.
+        - 228, 252: Same naming strategy for view wrappers.
+        - 333: Same naming strategy for methods.
+- Fixed a bug that made objects with views non-copiable.
+    - [core.py](src/frozen/core.py)
+        - 237-253: When copying, the `obj` parameter was empty, which raised an error. 
+        Now, `*args` is used instead: When instantiating `args[0]` holds he object to be wrapped; 
+        when copying, `args[0]` is not assignd.
+        The error was: "TypeError: \_\_new\_\_() missing 1 required positional argument: 'obj'" in "\lib\copyreg.py".
+    
+
+### Minor changes
+- Changed inner self's to `myself`.
+    - [freezable.py](src/frozen/freezable.py)
+    - [lockable.py](src/frozen/lockable.py)
+        - (Various locations)
+- Changed the error string of inaccessible methods on view objects.
+    - [core.py](src/frozen/core.py)
+        - 021: New member was added to `Errors`.
+    - [freezable.py](src/frozen/freezable.py)
+        - 066, 072: Changed the error string.
+    - [lockable.py](src/frozen/lockable.py)
+        - 097, 102: Proper error string was used.
+
 ## Version `0.0.2`
 
 ### Major changes

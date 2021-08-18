@@ -18,6 +18,8 @@ class Errors:
 		"`{}` class can only be called with method arguments."
 	ClassNotFinalized = \
 		"`{}` class has not been finalized using a `{}` decorator."
+	ViewMethodNotCallable = \
+		"`{}` method on `{}` view objects is not callable."
 
 
 def trace_execution(location_hint: typing.Iterable[type] = None):
@@ -217,41 +219,42 @@ class ClassDecorator:
 				value = getattr(object_class, name)
 
 				if (
-						not hasattr(cls, name) and (  # if this cls does not have the method (we don't want to override this methods)
-							isinstance(value, types.WrapperDescriptorType) or  # type(object.__init__)
-							isinstance(value, types.MethodDescriptorType)  # type(str.join)
-						)
+						not hasattr(cls, name) and  # if this cls does not have the method (we don't want to override this methods)
+						isinstance(value, (types.WrapperDescriptorType, types.MethodDescriptorType))  #
+						# WrapperDescriptorType == type(object.__init__), MethodDescriptorType == type(str.join)
 				):
 					special_methods[name] = make_method(name)
 
-			return type(f"{cls.__name__}({object_class.__qualname__})", (cls,), special_methods)
+			return type(f"@{cls.__name__}.{object_class.__name__}", (cls,), special_methods)
 
-		def __new__(cls, obj, *args, **kwargs):
+		def __new__(cls, *args, **kwargs):
 			"""
 			Creates a new Proxy(type(obj)) class
 			:param obj: The object for whose type the proxy is created/returned.
 			:param args:
 			:param kwargs:
 			"""
-			try:
-				proxy_class = cls.__proxy_cache[type(obj)]
-			except KeyError:
-				proxy_class = cls._create_class_proxy(type(obj))
-				cls.__proxy_cache[type(obj)] = proxy_class
+			# Reason for improvement of the function. The previous version raises error if calling copy() after view()
+			# File "...\lib\copyreg.py", line 88, in __newobj__
+			#   return cls.__new__(cls, *args)
+			# TypeError: __new__() missing 1 required positional argument: 'obj'
 
-			return object.__new__(proxy_class)
+			if len(args) == 0:  # When cls is being copied
+				return object.__new__(cls)
+			else:  # When new cls is created based on an obj
+				obj = args[0]
+				main_class = type(obj)
+
+				try:
+					proxy_class = cls.__proxy_cache[main_class]
+				except KeyError:
+					proxy_class = cls._create_class_proxy(main_class)
+					proxy_class.__qualname__ = main_class.__qualname__[:main_class.__qualname__.rfind('.')+1] + proxy_class.__name__
+					cls.__proxy_cache[main_class] = proxy_class
+
+				return object.__new__(proxy_class)
 
 	class ClassWrapper:
-		__specs = dict()
-
-		def __init_subclass__(cls, **kwargs):
-			parent = cls.__mro__[1]
-			cls.__name__ = f"{cls.__name__}({parent.__name__})"
-			cls.__qualname__ = parent.__qualname__
-			cls.__doc__ = parent.__doc__
-			cls.__module__ = parent.__module__
-			pass
-
 		def __init__(self, calling_class, wrapped_class, *args, **kwargs):
 			"""
 			__init__ super-method to be overridden by ClassWrappers
@@ -280,12 +283,18 @@ class ClassDecorator:
 	_method_decorator = None
 
 	# noinspection PyProtectedMember
-	def __call__(self, cls):
-		if not inspect.isclass(cls):
-			raise TypeError(Errors.CallWithClassArg.format(type(self).__name__))
+	def __call__(self, cls, wrapper=None):
+		if wrapper is None:
+			if not inspect.isclass(cls):
+				raise TypeError(Errors.CallWithClassArg.format(type(self).__name__))
 
-		if self._decorator_function.__name__ in MethodDecorator._current_class_decorators:
-			MethodDecorator._current_class_decorators.remove(self._decorator_function.__name__)  # Reset the checker
+			if self._decorator_function.__name__ in MethodDecorator._current_class_decorators:
+				MethodDecorator._current_class_decorators.remove(self._decorator_function.__name__)  # Reset the checker
+		else:
+			wrapper.__name__ = f"@{wrapper.__name__}.{cls.__name__}"
+			wrapper.__qualname__ = cls.__qualname__[:cls.__qualname__.rfind('.')+1] + wrapper.__name__
+			wrapper.__doc__ = cls.__doc__
+			wrapper.__module__ = cls.__module__
 
 
 class MethodDecorator:
@@ -321,8 +330,8 @@ class MethodDecorator:
 					)
 				)
 		else:
-			wrapper.__name__ = f"{wrapper.__name__}({method.__name__})"
-			wrapper.__qualname__ = method.__qualname__
+			wrapper.__name__ = f"@{wrapper.__name__}.{method.__name__}"
+			wrapper.__qualname__ = method.__qualname__[:method.__qualname__.rfind('.')+1] + wrapper.__name__
 			wrapper.__doc__ = method.__doc__
 			# noinspection PyUnresolvedReferences
 			wrapper.__module__ = method.__module__
