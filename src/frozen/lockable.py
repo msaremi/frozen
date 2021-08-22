@@ -1,11 +1,25 @@
 from .core import *
-from collections import defaultdict
+
+
+class LockableClass(ForwardDec, ClassDecorator):
+	pass
+
+
+class LockableMethod(ForwardDec, MethodDecorator):
+	pass
+
+
+MyClassDecorator = ClassDecorator[LockableClass, LockableMethod]
+MyMethodDecorator = MethodDecorator[LockableClass, LockableMethod]
 
 
 class Errors(Errors):
 	NoLocksDefined = \
-		"No locks have been defined for `{}`. " \
-		"Use `lock_permissions` to define the locks."
+		"No keys have been defined for `{}`. " \
+		"Use `lock_permissions` parameter to define the locks."
+	NoKeysDefined = \
+		"No keys have been defined for `{}`. " \
+		"Use `keys` parameter to define the keys."
 	CallingLockedMethod = \
 		"`{}` method is locked with key '{}'."
 	LockingNotAllowed = \
@@ -30,8 +44,8 @@ class LockError(PermissionError):
 
 def lockableclass(
 		*args,
-		lock_permissions: typing.Dict[str, typing.Optional[typing.Set]] = None,
-		unlock_permissions: typing.Dict[str, typing.Optional[typing.Set]] = None
+		lock_permissions: Dict[str, Optional[Set]] = None,
+		unlock_permissions: Dict[str, Optional[Set]] = None
 ):
 	if args:
 		cls = args[0]
@@ -40,11 +54,11 @@ def lockableclass(
 		return LockableClass(lock_permissions=lock_permissions, unlock_permissions=unlock_permissions)
 
 
-class LockableClass(ClassDecorator):
+class LockableClass(MyClassDecorator):
 	def __init__(
 			self,
-			lock_permissions: typing.Dict[str, typing.Optional[typing.Set]] = None,
-			unlock_permissions: typing.Dict[str, typing.Optional[typing.Set]] = None
+			lock_permissions: Dict[str, Optional[Set]] = None,
+			unlock_permissions: Dict[str, Optional[Set]] = None
 	):
 		"""
 
@@ -56,7 +70,10 @@ class LockableClass(ClassDecorator):
 		elif isinstance(lock_permissions, dict):
 			lock_permissions = lock_permissions.items()
 
-		lock_permissions = dict((k, set(v)) for k, v in lock_permissions)
+		lock_permissions = dict(
+			(k, {v} if isinstance(v, type) else set(v))
+			for k, v in lock_permissions if v is not None
+		)
 
 		if unlock_permissions is None:
 			unlock_permissions = lock_permissions
@@ -64,58 +81,34 @@ class LockableClass(ClassDecorator):
 			if isinstance(unlock_permissions, dict):
 				unlock_permissions = unlock_permissions.items()
 
-			unlock_permissions = dict((k, set(v)) for k, v in unlock_permissions)
+			unlock_permissions = dict(
+				(k, {v} if isinstance(v, type) else set(v))
+				for k, v in unlock_permissions if v is not None
+			)
 
 		self._locks = set(lock_permissions.keys() | unlock_permissions.keys())
-		self._lock_permissions: typing.Dict = defaultdict(lambda: None, lock_permissions)
-		self._unlock_permissions: typing.Dict = defaultdict(lambda: None, unlock_permissions)
+		self._lock_permissions: Dict = defaultdict(lambda: None, lock_permissions)
+		self._unlock_permissions: Dict = defaultdict(lambda: None, unlock_permissions)
 
 	def __call__(self, cls, *_):
-		"""
-		Sanitize the class cls and returns a wrapper
-		:param cls:
-		:return:
-		"""
 		super().__call__(cls)
 
-		# TODO: revisit this part
-		for func in inspect.getmembers(cls, lambda x: inspect.isfunction(x)):
-			try:
-				self._locks.update(func.__locks__)
-			except (AttributeError, TypeError):
-				pass
+		for spec in self._method_specs:
+			self._locks.update(spec.method_decorator.keys)
 
-		class LockableView(ClassDecorator.ObjectView):
-			__locks__: set
-
-			def __init__(self, obj):
-				self.__locks__ = obj.__locks__
-				ClassDecorator.ObjectView.__init__(self, obj)
-
-			def lock(self, key: str):
-				raise PermissionError(
-					Errors.ViewMethodNotCallable.format(LockableView.lock.__name__, cls.__qualname__)
-				)
-
-			def unlock(self, key: str):
-				raise PermissionError(
-					Errors.ViewMethodNotCallable.format(LockableView.unlock.__name__, cls.__qualname__)
-				)
-
-		class LockableWrapper(cls, ClassDecorator.ClassWrapper):
+		class LockableWrapper(cls, MyClassDecorator.ClassWrapper):
 			def __init__(self, *args, **kwargs):
 				# This will call LockableWrapper.__construct__ and then cls.__init__
-				self.__view = None
-				ClassDecorator.ClassWrapper.__init__(self, LockableWrapper, cls, *args, **kwargs)
+				MyClassDecorator.ClassWrapper.__init__(self, LockableWrapper, cls, *args, **kwargs)
 
-			def __construct__(self, locks: typing.Iterable[str] = None):
+			def __construct__(self, locks: Iterable[str] = None):
 				self.__locks__ = set()
 
 				if locks is not None and locks:
 					for key in locks:
 						self.lock(key)
 
-			def __locked_error__(self, key: str, method: typing.Callable):
+			def __locked_error__(self, key: str, method: Callable):
 				"""
 				Throws an error when a locked method is called
 				:param key:
@@ -145,10 +138,10 @@ class LockableClass(ClassDecorator):
 
 			def __unlock_error__(self, key: str, calling_cls):
 				"""
-				Throws an error when a class tries to unlock this without permission
+				Throws an error when a class tries to unlock this without permission.
 				:param key:
 				:param calling_cls:
-				:return:
+				:return: None
 				"""
 				try:
 					# noinspection PyUnresolvedReferences
@@ -171,6 +164,7 @@ class LockableClass(ClassDecorator):
 					raise KeyError(Errors.UnrecognizedKey.format(key)) from None
 
 			# noinspection PyMethodParameters
+			@locked_in_view
 			def lock(myself, key: str) -> None:
 				"""
 				Tries to lock the object with `key`;
@@ -205,6 +199,7 @@ class LockableClass(ClassDecorator):
 					myself.__lock_key_error__(key)
 
 			# noinspection PyMethodParameters
+			@locked_in_view
 			def unlock(myself, key: str) -> None:
 				if key in self._locks:
 					if self._unlock_permissions[key] is None:
@@ -243,10 +238,14 @@ class LockableClass(ClassDecorator):
 					myself.__lock_key_error__(key)
 
 			def view(self):
-				if self.__view is None:
-					self.__view = LockableView(self)
+				return self if isinstance(self, View) else LockableView(self)
 
-				return self.__view
+		class LockableView(View):
+			__locks__: set
+
+			def __init__(self, obj: LockableWrapper):
+				View.__init__(self, obj)
+				self.__locks__ = obj.__locks__
 
 		for lock in self._lock_permissions:
 			self._lock_permissions[lock].add(cls)
@@ -254,11 +253,10 @@ class LockableClass(ClassDecorator):
 		for lock in self._unlock_permissions:
 			self._unlock_permissions[lock].add(cls)
 
-		super().__call__(cls, LockableWrapper)
-		return LockableWrapper
+		return super().__call__(cls, LockableWrapper)
 
 
-def lockablemethod(*args, keys: typing.Set = None):
+def lockablemethod(*args, keys: Set = None):
 	if args:
 		method = args[0]
 		return LockableMethod()(method)
@@ -266,17 +264,20 @@ def lockablemethod(*args, keys: typing.Set = None):
 		return LockableMethod(keys=keys)
 
 
-class LockableMethod(MethodDecorator):
-	def __init__(self, keys: typing.Set = None):
-		self._keys = frozenset(keys)
+class LockableMethod(MyMethodDecorator):
+	def __init__(self, keys: Set = None):
+		if keys is not None:
+			self._keys = frozenset(keys)
+		else:
+			raise ValueError(Errors.NoKeysDefined.format(self._decorator_function.__name__))
 
-	def __call__(self, method: typing.Callable, *_):
+	def __call__(self, method: Callable, *_):
 		super().__call__(method)
 
 		def lockable_wrapper(myself, *args, **kwargs):
-			if isinstance(myself, ClassDecorator.ObjectView):
+			if isinstance(myself, View):
 				# noinspection PyProtectedMember
-				locks = myself.__locks__ | myself._ObjectView__obj.__locks__
+				locks = myself.__locks__ | myself._View__obj.__locks__
 			else:
 				locks = myself.__locks__
 
@@ -289,9 +290,14 @@ class LockableMethod(MethodDecorator):
 
 		return super().__call__(method, lockable_wrapper)
 
+	@property
+	def keys(self):
+		return self._keys
+
 
 LockableClass._decorator_function = lockableclass
 LockableClass._method_decorator = LockableMethod
 LockableMethod._decorator_function = lockablemethod
 LockableMethod._class_decorator = LockableClass
 lockable = ModuleElements(mth=lockablemethod, cls=lockableclass)
+Lockable = ClassDecorator[LockableClass, LockableMethod].ClassWrapper
