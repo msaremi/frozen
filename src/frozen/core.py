@@ -31,10 +31,7 @@ class Errors:
 		"`{}` method is not callable on `{}` view objects."
 
 
-def get_members(
-		obj: type | object,
-		predicate: Callable[[str, Any], bool] | None = None
-) -> Generator[Tuple[str, Any]]:
+def get_members(obj: object) -> Generator[Tuple[str, Any]]:
 	"""
 	Written originally by Python authors --- modified version to increase speed
 	Return all members of an object as (name, value) pairs sorted by name.
@@ -75,9 +72,7 @@ def get_members(
 				# __dir__; discard and move on
 				continue
 
-		if not predicate or predicate(key, value):
-			yield key, value
-
+		yield key, value
 		processed.add(key)
 
 
@@ -85,9 +80,9 @@ def trace_execution(
 		location_hint: Iterable[Type] | None = None
 ) -> Generator[Tuple[MethodType | FunctionType, type] | Tuple[None, None]]:
 	"""
-	Yields the list of (method, class)'s of the current execution frame
-	If the methods are not @staticmethod the algorithm finds the classes directly
-	If the methods are `@staticmethod` the algorithm searches in `locations_hint` and their subclasses
+	Yields the list of (method, class)'s of the current execution frame.
+	If the methods are not `@staticmethod` the algorithm finds the classes directly.
+	If the methods are `@staticmethod` the algorithm searches in `locations_hint` and their subclasses.\n
 	:param location_hint: List of candidate classes to search in.
 	:return: Yields (method, location) frame-by-frame in execution stack.
 	"""
@@ -104,11 +99,8 @@ def trace_execution(
 			:return: 
 			"""
 			for loc in search_in:
-				for method_name, method in get_members(  # Get all methods and functions of loc
-						loc,
-						lambda _, x: isinstance(x, (MethodType, FunctionType))
-				):
-					if code.co_name == method_name:
+				for method_name, method in get_members(loc):  # Get all methods and functions of loc
+					if isinstance(method, (MethodType, FunctionType)) and code.co_name == method_name:
 						if code == method.__code__:  # If code equals the method's __code__ then the method is found
 							return method, loc
 						else:  # However, for static methods, if the code and function names are the same, we also search all subclasses
@@ -148,12 +140,14 @@ def trace_execution(
 
 def get_object_descendents(
 		obj: object,
-		include_methods: bool = False
+		include_methods: bool = False,
+		visit_children: Callable[None, bool] = None
 ) -> Generator[Any]:
 	"""
 	Yields descendents of an object
 	:param obj: The object to be inspected
 	:param include_methods: Yield as well the member methods
+	:param visit_children: Should I visit the children of the last yielded object?
 	:return: Yield list of descendent objects of the current object
 	"""
 	queue: Deque[object] = deque({obj})
@@ -164,61 +158,62 @@ def get_object_descendents(
 
 		yield obj
 
-		members = get_members(
-			obj,
-			lambda k, x:
-				not k.startswith('__') and  # filters private members
-				not isinstance(x, BuiltinFunctionType) and  # filters build-in members
-				not isinstance(x, type) and  # filters type objects
-				not id(x) in visited and (  # filters visited members to avoid infinite cycles
-					include_methods or not (
-						# filters object methods, class methods, lambdas, and method attributes / static methods
-						isinstance(x, (MethodType, FunctionType))
-					)
-				)
-		)
-
-		for name, obj in members:
-			visited.add(id(obj))
-			queue.append(obj)
+		if visit_children is None or visit_children():
+			for name, member in get_members(obj):
+				if not (
+						name.startswith('__') or  # Filters private members
+						isinstance(member, BuiltinFunctionType) or  # Filters build-in members
+						isinstance(member, type) or  # Filters type objects
+						id(member) in visited or (  # Filters visited members to avoid infinite cycles
+							# `MethodType` adds in object instance methods, class methods, lambdas, and method attributes;
+							# `FunctionType` adds in static methods.
+							not include_methods and
+							isinstance(member, (MethodType, FunctionType))
+						)
+				):
+					visited.add(id(member))
+					queue.append(member)
 
 
 def tailor_arguments(
 		intended_method: Callable,
 		augmented_method: Callable,
-		has_self: bool = True,
-		*args, **kwargs
+		args: tuple,
+		kwargs: dict,
+		ignore_intended_params: int = 0,
+		ignore_augmented_params: int = 0,
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
 	"""
-	Tailors the argument list prepared for one function to be fit to another
-	:param intended_method:
-	:param augmented_method:
-	:param has_self: If the functions take the 'self' argument
-	:param args: List of positional arguments
-	:param kwargs: Dictionary of keyword arguments
-	:return: Tailored kwargs
+	Tailors the argument list prepared for one function to be fit to another.\n
+	:param intended_method: The method the user intends to run.
+	:param augmented_method: The method that is augmented to the intended method.
+	:param args: List of positional arguments.
+	:param kwargs: Dictionary of keyword arguments.
+	:param ignore_intended_params: Ignores the first n number of the intended function signature.
+	:param ignore_augmented_params: Ignores the first n number of the augmented function signature.
+	:return: Tailored kwargs for both `intended_method` and `augmented_method`.
 	"""
-	try:  # Using functool's cache to keep it from running over and over
+
+	try:  # Using functools' cache to keep it from recomputing the FullArgSpec
 		tailor_arguments.get_args_spec
 	except AttributeError:
 		tailor_arguments.get_args_spec = functools.lru_cache()(inspect.getfullargspec)
 
-	def f(*_):
-		pass
+	# noinspection PyTypeChecker
+	intended_spec: inspect.FullArgSpec = tailor_arguments.get_args_spec(intended_method)
+	intended_kwargs = kwargs if intended_spec.varkw else dict(
+		(k, kwargs[k])
+		for k in intended_spec.args[len(args):] + intended_spec.kwonlyargs
+		if k in kwargs
+	)
 
 	# noinspection PyTypeChecker
-	intended_spec = tailor_arguments.get_args_spec(intended_method if intended_method else f)
-	# noinspection PyTypeChecker
-	augmented_spec = tailor_arguments.get_args_spec(augmented_method if augmented_method else f)
-	intended_kwargs = kwargs if intended_spec.varkw else dict(
-		(k, kwargs[k]) for k in intended_spec.args if k in kwargs
-	)
-	# Since `self` is not ordinarily distinguishable
-	# from other first args, it's passed explicitly
-	start = 1 if has_self else 0   
-	kwargs.update(dict(zip(intended_spec.args[start:], args[start:])))
+	augmented_spec: inspect.FullArgSpec = tailor_arguments.get_args_spec(augmented_method)
+	kwargs.update(dict(zip(intended_spec.args[ignore_intended_params:], args)))
 	augmented_kwargs = kwargs if augmented_spec.varkw else dict(
-		(k, kwargs[k]) for k in augmented_spec.args[start:] if k in kwargs
+		(k, kwargs[k])
+		for k in augmented_spec.args[ignore_augmented_params:] + augmented_spec.kwonlyargs
+		if k in kwargs
 	)
 
 	return intended_kwargs, augmented_kwargs
@@ -241,33 +236,16 @@ def wraps(
 	wrapper.__module__ = wrapped.__module__
 
 
-def forward_declarable(cls):
-	method = cls.__class_getitem__
-
-	def __class_getitem__wrapper(item):
-		if isinstance(item, type) and issubclass(item, ForwardDec):
-			item = item.__qualname__
-
-		return method(item)
-
-	cls.__class_getitem__ = __class_getitem__wrapper
-	return cls
-
-
-def locked_in_view(mth):
+def locked_in_view(method: FunctionType | MethodType):
 	def method_wrapper(self, *args, **kwargs):
 		if isinstance(self, View):
 			raise PermissionError(
-				Errors.ViewMethodNotCallable.format(mth.__name__, type(self).__qualname__)
+				Errors.ViewMethodNotCallable.format(method.__name__, type(self).__qualname__)
 			)
 		else:
-			return mth(self, *args, **kwargs)
+			return method(self, *args, **kwargs)
 
 	return method_wrapper
-
-
-class ForwardDec:
-	pass
 
 
 ClassDecoratorType = TypeVar('ClassDecoratorType', bound='ClassDecorator')
@@ -301,7 +279,7 @@ class View(object):
 			# If the member is of one of the following type, return its view()
 			# The view() method of ClassDecorator returns an ObjectView.
 			# This makes recursive proxying possible.
-			elif isinstance(value, ClassDecorator.ClassWrapper):
+			elif isinstance(value, ClassWrapperBase):
 				return value.view()
 			else:
 				return value
@@ -376,39 +354,56 @@ class View(object):
 			return object.__new__(proxy_class)
 
 
-@forward_declarable
+class ClassWrapperBase:
+	class HasCls(Protocol):
+		__cls__: type
+
+	def __init_subclass__(cls: Type[HasCls] | type, **kwargs):
+		if not issubclass(cls.__bases__[0], ClassWrapperBase):
+			cls.__cls__ = cls.__bases__[0]
+
+	def __init__(self, args, kwargs, wrapper_cls: Type[ClassWrapperBase]):
+		"""
+		__init__ super-method to be overridden by ClassWrappers
+		overriding
+		:param wrapper_cls:
+		:param args:
+		:param kwargs:
+		"""
+
+		# The function to be replaced by object.__init__;
+		# object.__init__'s signature takes both *args and **kwargs,
+		# but raises an error if called by those arguments.
+		# noinspection PyShadowingNames
+		def object__init__(self):
+			return self
+
+		wrapped_cls: Type[ClassWrapperBase.HasCls] | Type[ClassWrapperBase] | type = wrapper_cls.__bases__[0]
+		parent_cls: Type[ClassWrapperBase] | type = wrapper_cls.__bases__[1]
+		decorated_cls = wrapped_cls.__cls__
+		intended_method = object__init__ if decorated_cls.__init__ == object.__init__ else decorated_cls.__init__
+		intended_kwargs, augmented_kwargs = tailor_arguments(
+			intended_method=intended_method,
+			augmented_method=parent_cls.__load__,
+			ignore_intended_params=1,
+			ignore_augmented_params=1,
+			args=args,
+			kwargs=kwargs
+		)
+		# Call `wrapped_cls.__init__` with kwargs if it is a ClassWrapper; else, with intended_kwargs.
+		wrapped_cls.__init__(self, *args, **(intended_kwargs if wrapped_cls == decorated_cls else kwargs))
+		parent_cls.__load__(self, **augmented_kwargs)
+
+	def __load__(self, **kwargs):
+		raise NotImplementedError(Errors.MethodNotImplemented.format(self.__load__.__qualname__))
+
+	def view(self):
+		raise NotImplementedError(Errors.MethodNotImplemented.format(self.view.__qualname__))
+
+
 class ClassDecorator(Generic[ClassDecoratorType, MethodDecoratorType]):
 	_decorator_function: FunctionType = None
 	_method_decorator: Type[MethodDecoratorType] = None
-
-	class ClassWrapper:
-		def __init__(self, calling_class: Type[ClassDecoratorType.ClassWrapper], wrapped_class, *args, **kwargs):
-			"""
-			__init__ super-method to be overridden by ClassWrappers
-			overriding
-			:param calling_class:
-			:param args:
-			:param kwargs:
-			"""
-			# Search the `mro` and find the first non-wrapped class to extract its __init__ signature
-			# This class is the one that user enters the arguments based on, therefore, we extract its parameters
-			i, intended_class = next((
-				(i, cls) for i, cls in enumerate(calling_class.mro())
-				if not issubclass(cls, ClassDecorator.ClassWrapper)
-			))
-			__init__ = None if intended_class.__init__ == object.__init__ else intended_class.__init__
-			intended_kwargs, construct_kwargs = tailor_arguments(
-				__init__, calling_class.__construct__, True, self, *args, **kwargs
-			)
-			calling_class.__construct__(self, **construct_kwargs)
-			# Call wrapped_class with kwargs if it is a ClassDecorator; else, with intended_kwargs
-			wrapped_class.__init__(self, *args, **(intended_kwargs if i == 1 else kwargs))
-
-		def __construct__(self, **kwargs):
-			raise NotImplementedError(Errors.MethodNotImplemented.format(self.__construct__.__qualname__))
-
-		def view(self):
-			raise NotImplementedError(Errors.MethodNotImplemented.format(self.view.__qualname__))
 
 	# noinspection PyProtectedMember
 	@property
@@ -434,7 +429,6 @@ class ClassDecorator(Generic[ClassDecoratorType, MethodDecoratorType]):
 			return wrapper
 
 
-@forward_declarable
 class MethodDecorator(Generic[ClassDecoratorType, MethodDecoratorType]):
 	"""
 	Base method decorator class. For internal use only.\n
