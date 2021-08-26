@@ -7,13 +7,13 @@ import copy
 class Errors(Errors):
 	"""
 	List of error messages in this module.
-	:cvar InconsistentCopyMethod: Error message for when the decorated class has an inconsistent signature.
+	# :cvar InconsistentCopyMethod: Error message for when the decorated class has an inconsistent signature.
 	:cvar CallingFrozenMethod: Error message for when a frozen method is called.
 	:cvar MethodNotCallable: Error message for when a `freeze` or `melt` is not allowed to be called.
 	"""
-	InconsistentCopyMethod = \
-		"`{}` class has a `copy` method with inconsistent signature. " \
-		"It needs a positional 'self' parameter and a 'deep' parameter."
+	# InconsistentCopyMethod = \
+	# 	"`{}` class has a `copy` method with inconsistent signature. " \
+	# 	"It needs a positional 'self' parameter and a 'deep' parameter."
 	CallingFrozenMethod = \
 		"Calling `{}` method on frozen `{}` objects is not possible. " \
 		"Try making a copy of the object before calling frozen methods."
@@ -33,9 +33,8 @@ def freezableclass(*args, let_freeze: bool = True, let_melt: bool = False):
 		return FreezableClassDecorator(let_freeze=let_freeze, let_melt=let_melt)
 
 
-class Freezable(ClassWrapperBase):
-	def __init__(self, args, kwargs, wrapper_cls: Type[Freezable], decorator: FreezableClassDecorator):
-		self.__decorator = decorator
+class Freezable(ClassWrapperBase['FreezableClassDecoratorData']):
+	def __init__(self, args, kwargs, wrapper_cls: Type[Freezable]):
 		self.__view = None
 		ClassWrapperBase.__init__(self, args=args, kwargs=kwargs, wrapper_cls=wrapper_cls)
 
@@ -43,7 +42,7 @@ class Freezable(ClassWrapperBase):
 		self.__frozen__ = frozen
 
 		if self.__frozen__:
-			self.__set_frozen_state(frozen=True, deep=False)
+			self._set_frozen_state(frozen=True, deep=False)
 
 	def __frozen_error__(self, method: Callable) -> None:
 		"""
@@ -53,15 +52,15 @@ class Freezable(ClassWrapperBase):
 		"""
 		raise FrozenError(
 			Errors.CallingFrozenMethod.format(method.__name__, type(self).__qualname__)
-		) from None
+		)
 
-	def __set_frozen_state(self, frozen: bool, deep: bool) -> None:
+	def _set_frozen_state(self, frozen: bool, deep: bool) -> None:
 		self.__frozen__ = frozen
 
 		if deep:
 			visit_children: bool
 
-			for obj in get_object_descendents(self, visit_children=lambda: visit_children):
+			for obj in get_descendents(self, visit_children=lambda: visit_children):
 				visit_children = isinstance(obj, Freezable)
 
 				if visit_children:
@@ -75,33 +74,21 @@ class Freezable(ClassWrapperBase):
 		"""
 		return self.__frozen__
 
-	@locked_in_view
 	def freeze(self, deep: bool = True) -> None:
 		"""
 		Freeze a Freezable object. If `deep` is `True`, also freeze its transitive Freezable descendents.\n
 		:param deep: Determine whether to freeze the descendents or not.
 		:raises PermissionError: If the object can not be frozen, i.e. `let_freeze` is `False`.
 		"""
-		if self.__decorator.let_freeze:
-			return self.__set_frozen_state(frozen=True, deep=deep)
-		else:
-			raise PermissionError(
-				Errors.MethodNotCallable.format(Freezable.freeze.__name__, type(self).__qualname__)
-			)
+		raise NotImplementedError(Errors.MethodNotImplemented.format(self.freeze.__qualname__))
 
-	@locked_in_view
 	def melt(self, deep: bool = True):
 		"""
 		Unfreeze a Freezable object. If `deep` is `True`, also unfreeze its transitive Freezable descendents.\n
 		:param deep: Determine whether to unfreeze the descendents or not.
 		:raises PermissionError: If the object can not be unfrozen, i.e. `let_melt` is `False`.
 		"""
-		if self.__decorator.let_melt:
-			return self.__set_frozen_state(frozen=False, deep=deep)
-		else:
-			raise PermissionError(
-				Errors.MethodNotCallable.format(Freezable.melt.__name__, type(self).__qualname__)
-			)
+		raise NotImplementedError(Errors.MethodNotImplemented.format(self.melt.__qualname__))
 
 	def copy(self, deep: bool = True, frozen: bool = None):
 		"""
@@ -114,23 +101,15 @@ class Freezable(ClassWrapperBase):
 		new_obj = copy.deepcopy(self) if deep else copy.copy(self)
 
 		if frozen is not None:
-			new_obj.__set_frozen_state(frozen=frozen, deep=deep)
+			new_obj._set_frozen_state(frozen=frozen, deep=deep)
 
 		return new_obj
 
-	def view(self):
-		if self.__view is None:
-			self.__view = FreezableView(self)
-
-		return self.__view
+	class View(View):
+		pass
 
 
-class FreezableView(View):
-	def __init__(self, obj: Freezable):
-		View.__init__(self, obj)
-
-
-class FreezableClassDecorator(ClassDecorator[b'FreezableClassDecorator', b'FreezableMethodDecorator']):
+class FreezableClassDecorator(ClassDecorator['FreezableClassDecorator', 'FreezableMethodDecorator']):
 	def __init__(self, let_freeze: bool = True, let_melt: bool = False):
 		"""
 		:param let_freeze: Let the object call the freeze method in cases other than `__init__` or `copy`
@@ -155,22 +134,9 @@ class FreezableClassDecorator(ClassDecorator[b'FreezableClassDecorator', b'Freez
 		"""
 		super().__call__(cls)
 
-		# try:  # if cls.copy does not exist it will set is_copy_callable to False
-		# 	is_copy_callable = isinstance(cls.copy, Callable)
-		# except AttributeError:
-		# 	is_copy_callable = False
-		#
-		# if is_copy_callable:
-		# 	cls_spec = inspect.getfullargspec(cls.copy)
-		# 	self_spec = inspect.getfullargspec(self.copy)
-		#
-		# 	if (
-		# 			(len(cls_spec.args) == 0 and cls_spec.varargs is None) or  # check if the method has a 'self' parameter
-		# 			(self_spec.args[1] not in cls_spec.args and cls_spec.varkw is None)  # check if 'deep' exists as a parameter
-		# 	):
-		# 		raise ValueError(Errors.InconsistentCopyMethod.format(cls.__qualname__))
-
 		class FreezableWrapper(cls, Freezable):
+			__decorator__ = FreezableClassDecoratorData(self)
+
 			def __init__(*args, **kwargs):
 				# The reason why I do not use `self`:
 				# We do not know the name of the `self` argument in `cls.__init__`;
@@ -181,10 +147,39 @@ class FreezableClassDecorator(ClassDecorator[b'FreezableClassDecorator', b'Freez
 					args=args[1:],
 					kwargs=kwargs,
 					wrapper_cls=FreezableWrapper,
-					decorator=self,
 				)
 
+			@locked_in_view
+			def freeze(self, deep: bool = True) -> None:
+				if FreezableWrapper.__decorator__.let_freeze:
+					return self._set_frozen_state(frozen=True, deep=deep)
+				else:
+					raise PermissionError(
+						Errors.MethodNotCallable.format(FreezableWrapper.freeze.__name__, type(self).__qualname__)
+					)
+
+			@locked_in_view
+			def melt(self, deep: bool = True):
+				if FreezableWrapper.__decorator__.let_melt:
+					return self._set_frozen_state(frozen=False, deep=deep)
+				else:
+					raise PermissionError(
+						Errors.MethodNotCallable.format(FreezableWrapper.melt.__name__, type(self).__qualname__)
+					)
+
 		return super().__call__(cls, FreezableWrapper)
+
+
+class FreezableClassDecoratorData(ClassDecoratorData):
+	let_freeze: bool
+	let_melt: bool
+
+	def __init__(
+			self,
+			decorator: FreezableClassDecorator
+	):
+		self.let_freeze = decorator.let_freeze
+		self.let_melt = decorator.let_melt
 
 
 def freezablemethod(*args):
@@ -195,18 +190,28 @@ def freezablemethod(*args):
 		return FreezableMethodDecorator()
 
 
-class FreezableMethodDecorator(MethodDecorator[b'FreezableClassDecorator', b'FreezableMethodDecorator']):
+class FreezableMethodDecorator(MethodDecorator['FreezableClassDecorator', 'FreezableMethodDecorator']):
 	def __call__(self, method: Callable, *_):
 		super().__call__(method)
 		
-		def freezable_wrapper(myself, *args, **kwargs):
-			if isinstance(myself, View):
+		def freezable_wrapper(*args, **kwargs):
+			obj = args[0]
+
+			if isinstance(obj, Freezable):
+				if obj.__frozen__:
+					obj.__frozen_error__(method)
+				else:
+					return method(*args, **kwargs)
+			elif isinstance(obj, View):
 				# noinspection PyProtectedMember
-				myself._View__obj.__frozen_error__(method)
-			elif myself.__frozen__:
-				myself.__frozen_error__(method)
+				obj._View__obj.__frozen_error__(method)
 			else:
-				return method(myself, *args, **kwargs)
+				raise DecorationUsageError(
+					Errors.ClassNotFinalized.format(
+						obj.__class__.__qualname__,
+						freezableclass.__name__
+					)
+				)
 
 		return super().__call__(method, freezable_wrapper)
 

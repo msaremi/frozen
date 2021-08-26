@@ -138,7 +138,7 @@ def trace_execution(
 		frame = frame.f_back
 
 
-def get_object_descendents(
+def get_descendents(
 		obj: object,
 		include_methods: bool = False,
 		visit_children: Callable[None, bool] = None
@@ -147,7 +147,8 @@ def get_object_descendents(
 	Yields descendents of an object
 	:param obj: The object to be inspected
 	:param include_methods: Yield as well the member methods
-	:param visit_children: Should I visit the children of the last yielded object?
+	:param visit_children: A callback that determines whether the children of the last visited object should be visited.
+		If `None`, always visit the children.
 	:return: Yield list of descendent objects of the current object
 	"""
 	queue: Deque[object] = deque({obj})
@@ -201,7 +202,7 @@ def tailor_arguments(
 
 	# noinspection PyTypeChecker
 	intended_spec: inspect.FullArgSpec = tailor_arguments.get_args_spec(intended_method)
-	intended_kwargs = kwargs if intended_spec.varkw else dict(
+	intended_kwargs = kwargs.copy() if intended_spec.varkw else dict(
 		(k, kwargs[k])
 		for k in intended_spec.args[len(args):] + intended_spec.kwonlyargs
 		if k in kwargs
@@ -249,6 +250,7 @@ def locked_in_view(method: FunctionType | MethodType):
 
 
 ClassDecoratorType = TypeVar('ClassDecoratorType', bound='ClassDecorator')
+ClassDecoratorDataType = TypeVar('ClassDecoratorDataType', bound='ClassDecoratorData')
 MethodDecoratorType = TypeVar('MethodDecoratorType', bound='MethodDecorator')
 
 
@@ -324,51 +326,91 @@ class View(object):
 			):
 				special_methods[name] = make_method(name)
 
+		# Remember: `proxy_class` (the returned class) inherits `__new__` from
+		# `View` (this class) or `object_class` if I do not redeclare it.
+		# The `__new__` method is called when the proxy is being copied and
+		# it must be `object`'s `__new__`.
+		special_methods[object.__new__.__name__] = object.__new__
 		return type(cls.__name__, (cls,), special_methods)
 
-	def __new__(cls, *args, **kwargs):
+	def __new__(cls, obj, *args, **kwargs):
 		"""
 		Creates a new Proxy(type(obj)) class
 		:param obj: The object for whose type the proxy is created/returned.
 		:param args:
 		:param kwargs:
 		"""
-		# Reason for improvement of the function. The previous version raises error if calling copy() after view()
-		# File "...\lib\copyreg.py", line 88, in __newobj__
-		#   return cls.__new__(cls, *args)
-		# TypeError: __new__() missing 1 required positional argument: 'obj'
 
-		if len(args) == 0:  # When cls is being copied
-			return object.__new__(cls)
-		else:  # When new cls is created based on an obj
-			obj = args[0]
-			main_class = type(obj)
+		main_class = type(obj)
 
-			try:
-				proxy_class = cls.__proxy_cache[main_class]
-			except KeyError:
-				proxy_class = cls._create_class_proxy(main_class)
-				wraps(proxy_class, main_class)
-				cls.__proxy_cache[main_class] = proxy_class
+		try:
+			proxy_class = cls.__proxy_cache[main_class]
+		except KeyError:
+			proxy_class = cls._create_class_proxy(main_class)
+			wraps(proxy_class, main_class)
+			cls.__proxy_cache[main_class] = proxy_class
 
-			return object.__new__(proxy_class)
+		return object.__new__(proxy_class)
+
+	def view(self):
+		return self
 
 
-class ClassWrapperBase:
-	class HasCls(Protocol):
-		__cls__: type
+class MultiView(View):
+	__combination_cache = dict()
 
-	def __init_subclass__(cls: Type[HasCls] | type, **kwargs):
-		if not issubclass(cls.__bases__[0], ClassWrapperBase):
-			cls.__cls__ = cls.__bases__[0]
+	@classmethod
+	def _create_multi_class(cls, classes: tuple):
+		name = f"{MultiView.__name__}[{', '.join(c.__qualname__ for c in classes)}]"
+		return type(name, (MultiView,) + classes, {object.__init__.__name__: cls.__init__})
+
+	def __init__(self, classes: FrozenSet[Type[View]], obj: object):
+		for cls in classes:
+			if object.__init__.__name__ in cls.__dict__:
+				cls.__init__(self, obj)
+
+		View.__init__(self, obj)
+
+	def __new__(cls, classes: FrozenSet[Type[View]], obj: object):
+		try:
+			multi_class = cls.__combination_cache[classes]
+		except KeyError:
+			multi_class = cls._create_multi_class(tuple(classes))
+			cls.__combination_cache[classes] = multi_class
+
+		return object.__new__(multi_class)
+
+
+class ClassWrapperBase(Generic[ClassDecoratorDataType]):
+	__decorator__: ClassDecoratorDataType
+	__cls__: type
+
+	@staticmethod
+	def __is_wrapper(cls: Type[ClassWrapperBase] | type):
+		return (
+				len(cls.__bases__) == 2 and
+				len(cls.__bases__[1].__bases__) > 0 and
+				cls.__bases__[1].__bases__[0] == ClassWrapperBase
+		)
+
+	@staticmethod
+	def __get_wrapper_view(cls: Type[ClassWrapperBase] | type) -> Type[View]:
+		return cls.View
+
+	def __init_subclass__(cls: Type[ClassWrapperBase] | type, **kwargs):
+		if ClassWrapperBase.__is_wrapper(cls):
+			if ClassWrapperBase.__is_wrapper(cls.__bases__[0]):
+				# noinspection PyUnresolvedReferences
+				cls.__cls__ = cls.__bases__[0].__cls__
+			else:
+				cls.__cls__ = cls.__bases__[0]
 
 	def __init__(self, args, kwargs, wrapper_cls: Type[ClassWrapperBase]):
 		"""
-		__init__ super-method to be overridden by ClassWrappers
-		overriding
-		:param wrapper_cls:
-		:param args:
-		:param kwargs:
+		__init__ super-method to be overridden by ClassWrappers.\n
+		:param args: packed *args of the child __init__
+		:param kwargs: packed **kwargs of the child __init__
+		:param wrapper_cls: The wrapper class whose __init__ has been called
 		"""
 
 		# The function to be replaced by object.__init__;
@@ -378,9 +420,9 @@ class ClassWrapperBase:
 		def object__init__(self):
 			return self
 
-		wrapped_cls: Type[ClassWrapperBase.HasCls] | Type[ClassWrapperBase] | type = wrapper_cls.__bases__[0]
+		wrapped_cls: Type[ClassWrapperBase] | type = wrapper_cls.__bases__[0]
 		parent_cls: Type[ClassWrapperBase] | type = wrapper_cls.__bases__[1]
-		decorated_cls = wrapped_cls.__cls__
+		decorated_cls = wrapper_cls.__cls__
 		intended_method = object__init__ if decorated_cls.__init__ == object.__init__ else decorated_cls.__init__
 		intended_kwargs, augmented_kwargs = tailor_arguments(
 			intended_method=intended_method,
@@ -398,7 +440,21 @@ class ClassWrapperBase:
 		raise NotImplementedError(Errors.MethodNotImplemented.format(self.__load__.__qualname__))
 
 	def view(self):
-		raise NotImplementedError(Errors.MethodNotImplemented.format(self.view.__qualname__))
+		view_classes: List[Type[View]] = []
+
+		for cls in type(self).mro():
+			if ClassWrapperBase.__is_wrapper(cls):
+				view_cls = ClassWrapperBase.__get_wrapper_view(cls.__bases__[1])
+				view_classes.append(view_cls)
+
+		return MultiView(frozenset(view_classes), self)
+
+	class View(View):
+		pass
+
+
+class ClassDecoratorData:
+	pass
 
 
 class ClassDecorator(Generic[ClassDecoratorType, MethodDecoratorType]):
@@ -407,7 +463,7 @@ class ClassDecorator(Generic[ClassDecoratorType, MethodDecoratorType]):
 
 	# noinspection PyProtectedMember
 	@property
-	def _method_specs(self) -> Set[MethodSpec[ClassDecoratorType, MethodDecoratorType]]:
+	def method_specs(self) -> Set[MethodSpec[ClassDecoratorType, MethodDecoratorType]]:
 		return current_decorator_specs[type(self)]
 
 	def __call__(self, cls, wrapper: type = None):

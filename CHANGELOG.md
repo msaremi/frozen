@@ -1,5 +1,37 @@
 # Changelog
 
+## Version `0.0.5`
+
+### Major changes:
+- (Re-)implemented `view()`, finally.
+  - `view()` returns the most restricted object compared to the current object.
+  If `obj` is a freezable object, `obj.view()` will always be frozen; if `obj` is a lockable object, `obj.view()`
+  will always be locked with the current locks, even when `obj` is unlocked. Also, `obj` can 
+  be both freezable and lockable.
+  - The `frozen.core.MultiView` class creates new MultiView types upon request. Current 
+  MultiView types are `MultiView[Freezable.View]`, `MultiView[Lockable.View]`, and `MultiView[Freezable.View, Lockable.View]`.
+    - [`frozen.core.MultiView`](src/frozen/core.py): Class added.
+    - [`frozen.core.ClassWrapperBase.view(...)`](src/frozen/core.py): Method added.
+- A bug fixed related to the class decorators, that caused inheritance in the decorators buggy.
+  - The `frozen.lockable.Lockable` and `frozen.freezable.Freezable` are not bipartite! Part of them is
+  implemented in the decorator `__call__` method. This part stores the data relevant to the decorator.
+
+### Minor changes:
+- `get_object_descendents(...)` method re-named to `get_descendents(...)`.
+  - [`frozen.core.get_descendents`](src/frozen/core.py): Method renamed.
+- A bug in `tailor_arguments` fixed that caused duplicate values in the intended method.
+  - [`frozen.core.tailor_arguments`](src/frozen/core.py): Added `kwargs` to `kwargs.copy()` so that the `intended_kwargs` will not be affected.
+- Introduced `ClassDecoratorData` types that hold the data of `ClassDecorator` objects.
+  - [`frozen.core.ClassDecoratorDataType`](src/frozen/core.py): Generic type added.
+  - [`frozen.freezable.FreezableMethodDecorator`](src/frozen/freezable.py): Class added.
+  - [`frozen.lockable.LockableClassDecoratorData`](src/frozen/lockable.py): Class added.
+- The shared part of the `Lockable.lock` and `Lockable.unlock` methods is now in a new method `_is_calling_class_valid`.
+  - [`frozen.lockable.Lockable.is_calling_class_valid`](src/frozen/lockable.py): Method added.
+  - [`frozen.lockable.Lockable.lock`](src/frozen/lockable.py): Method changed.
+  - [`frozen.lockable.Lockable.unlock`](src/frozen/lockable.py): Method changed.
+- Various other minor fixes.
+
+
 ## Version `0.0.4`
 
 ### Major changes:
