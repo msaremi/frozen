@@ -178,12 +178,12 @@ def get_descendents(
 
 def tailor_arguments(
 		intended_method: Callable,
-		augmented_method: Callable,
+		augmented_method: Optional[Callable],
 		args: tuple,
 		kwargs: dict,
 		ignore_intended_params: int = 0,
 		ignore_augmented_params: int = 0,
-) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+) -> Tuple[Dict[str, Any], Dict[str, Any] | None]:
 	"""
 	Tailors the argument list prepared for one function to be fit to another.\n
 	:param intended_method: The method the user intends to run.
@@ -208,14 +208,17 @@ def tailor_arguments(
 		if k in kwargs
 	)
 
-	# noinspection PyTypeChecker
-	augmented_spec: inspect.FullArgSpec = tailor_arguments.get_args_spec(augmented_method)
-	kwargs.update(dict(zip(intended_spec.args[ignore_intended_params:], args)))
-	augmented_kwargs = kwargs if augmented_spec.varkw else dict(
-		(k, kwargs[k])
-		for k in augmented_spec.args[ignore_augmented_params:] + augmented_spec.kwonlyargs
-		if k in kwargs
-	)
+	if augmented_method is not None:
+		# noinspection PyTypeChecker
+		augmented_spec: inspect.FullArgSpec = tailor_arguments.get_args_spec(augmented_method)
+		kwargs.update(dict(zip(intended_spec.args[ignore_intended_params:], args)))
+		augmented_kwargs = kwargs if augmented_spec.varkw else dict(
+			(k, kwargs[k])
+			for k in augmented_spec.args[ignore_augmented_params:] + augmented_spec.kwonlyargs
+			if k in kwargs
+		)
+	else:
+		augmented_kwargs = None
 
 	return intended_kwargs, augmented_kwargs
 
@@ -265,7 +268,7 @@ class View(object):
 	__proxy_cache = dict()
 	__obj = None  # Necessary for the class to detect it as a member
 
-	def __init__(self, obj):
+	def __init__(self, obj, **kwargs):
 		self.__obj = obj
 
 	def __getattribute__(self, item):
@@ -308,8 +311,8 @@ class View(object):
 		:return: The proxy class
 		"""
 		def make_method(method_name):
-			def method(self, *args, **kw):
-				return getattr(self._obj, method_name)(*args, **kw)
+			def method(*args, **kwargs):
+				return getattr(args[0].__obj, method_name)(*args[1:], **kwargs)
 
 			return method
 
@@ -356,29 +359,45 @@ class View(object):
 		return self
 
 
-class MultiView(View):
+class MultiView:
 	__combination_cache = dict()
 
 	@classmethod
-	def _create_multi_class(cls, classes: tuple):
+	def _create_multi_class(cls, classes: Tuple[Type[View], ...]):
+		def __init__(self, obj: object, **kwargs):
+			"""
+			Call all `__init__` methods; ignore those view classes that do not define `__init__`
+			"""
+			for c in classes:
+				if object.__init__.__name__ in c.__dict__:
+					tailored_kwargs, _ = tailor_arguments(
+						intended_method=c.__init__,
+						augmented_method=None,
+						args=tuple(),
+						kwargs=kwargs,
+						ignore_intended_params=2
+					)
+					c.__init__(self, obj, **tailored_kwargs)
+
+			View.__init__(self, obj)
+
 		name = f"{MultiView.__name__}[{', '.join(c.__qualname__ for c in classes)}]"
-		return type(name, (MultiView,) + classes, {object.__init__.__name__: cls.__init__})
+		methods = {
+			object.__init__.__name__: __init__,
+			object.__new__.__name__: object.__new__
+		}
+		return type(name, classes, methods)
 
-	def __init__(self, classes: FrozenSet[Type[View]], obj: object):
-		for cls in classes:
-			if object.__init__.__name__ in cls.__dict__:
-				cls.__init__(self, obj)
-
-		View.__init__(self, obj)
-
-	def __new__(cls, classes: FrozenSet[Type[View]], obj: object):
+	def __new__(cls, classes: FrozenSet[Type[View]], obj: object, **kwargs):
 		try:
 			multi_class = cls.__combination_cache[classes]
 		except KeyError:
 			multi_class = cls._create_multi_class(tuple(classes))
 			cls.__combination_cache[classes] = multi_class
 
-		return object.__new__(multi_class)
+		multi_obj: View = object.__new__(multi_class)
+		multi_obj.__init__(obj, **kwargs)  # Since Python does not invoke multi_obj.__init__
+		return multi_obj
 
 
 class ClassWrapperBase(Generic[ClassDecoratorDataType]):
@@ -394,8 +413,9 @@ class ClassWrapperBase(Generic[ClassDecoratorDataType]):
 		)
 
 	@staticmethod
-	def __get_wrapper_view(cls: Type[ClassWrapperBase] | type) -> Type[View]:
-		return cls.View
+	def __get_wrapper_view(cls: type) -> Type[View]:
+		base: Type[ClassWrapperBase] | type = cls.__bases__[1]
+		return base.View
 
 	def __init_subclass__(cls: Type[ClassWrapperBase] | type, **kwargs):
 		if ClassWrapperBase.__is_wrapper(cls):
@@ -439,15 +459,15 @@ class ClassWrapperBase(Generic[ClassDecoratorDataType]):
 	def __load__(self, **kwargs):
 		raise NotImplementedError(Errors.MethodNotImplemented.format(self.__load__.__qualname__))
 
-	def view(self):
-		view_classes: List[Type[View]] = []
+	def view(self, **kwargs):
+		view_classes: Set[Type[View]] = set()
 
 		for cls in type(self).mro():
 			if ClassWrapperBase.__is_wrapper(cls):
-				view_cls = ClassWrapperBase.__get_wrapper_view(cls.__bases__[1])
-				view_classes.append(view_cls)
+				view_cls = ClassWrapperBase.__get_wrapper_view(cls)
+				view_classes.add(view_cls)
 
-		return MultiView(frozenset(view_classes), self)
+		return MultiView(frozenset(view_classes), self, **kwargs)
 
 	class View(View):
 		pass

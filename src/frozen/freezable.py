@@ -106,7 +106,7 @@ class Freezable(ClassWrapperBase['FreezableClassDecoratorData']):
 		return new_obj
 
 	class View(View):
-		pass
+		__frozen__ = True
 
 
 class FreezableClassDecorator(ClassDecorator['FreezableClassDecorator', 'FreezableMethodDecorator']):

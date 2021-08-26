@@ -144,7 +144,7 @@ class Lockable(ClassWrapperBase['LockableClassDecoratorData']):
 		__view_locks__: set = None
 
 		def __init__(self, obj: Lockable):
-			self.__view_locks__ = obj.__locks__
+			self.__view_locks__ = obj.__locks__.copy()
 
 		@property
 		def __locks__(self):
@@ -237,7 +237,10 @@ class LockableClassDecorator(ClassDecorator['LockableClassDecorator', 'LockableM
 						)
 
 						if found:
-							self.__locks__.remove(key)
+							try:
+								self.__locks__.remove(key)
+							except KeyError:
+								pass
 						else:
 							self.__unlock_error__(key, calling_classes[0])
 				else:

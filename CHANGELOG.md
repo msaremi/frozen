@@ -29,7 +29,13 @@
   - [`frozen.lockable.Lockable.is_calling_class_valid`](src/frozen/lockable.py): Method added.
   - [`frozen.lockable.Lockable.lock`](src/frozen/lockable.py): Method changed.
   - [`frozen.lockable.Lockable.unlock`](src/frozen/lockable.py): Method changed.
-- Various other minor fixes.
+- Added `__frozen__ = True` to `Freezable.View`
+  - [`frozen.freezable.Freezable.View.__frozen__`](src/frozen/freezable.py): Attribute added.
+- A bug fixed in `Lockable.View` that made it possible to unlock lockable views by unlocking the objects.
+- A bug fixed in `Lockable.unlock` that raised an error when the object has not previously been locked with a key before unlocking.
+- A bug fixed in `View` that made it impossible to cpy special methods. Another bug that caused conflicting arguments with `self` was fixed.
+  - [`frozen.core.View._create_class_proxy`](src/frozen/core.py): `self._obj` changed to `args[0].__obj`.
+
 
 
 ## Version `0.0.4`
