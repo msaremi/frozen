@@ -162,7 +162,7 @@ def get_descendents(
 		if visit_children is None or visit_children():
 			for name, member in get_members(obj):
 				if not (
-						name.startswith('__') or  # Filters private members
+						name.startswith('__') or  # Filters dunder members
 						isinstance(member, BuiltinFunctionType) or  # Filters build-in members
 						isinstance(member, type) or  # Filters type objects
 						id(member) in visited or (  # Filters visited members to avoid infinite cycles
@@ -266,20 +266,20 @@ class View(object):
 	A proxy class of an arbitrary object.
 	"""
 	__proxy_cache = dict()
-	__obj = None  # Necessary for the class to detect it as a member
+	__obj__ = None  # Necessary for the class to detect it as a member
 
 	def __init__(self, obj, **kwargs):
-		self.__obj = obj
+		self.__obj__ = obj
 
 	def __getattribute__(self, item):
 		try:
 			return object.__getattribute__(self, item)
 		except AttributeError:
-			value = getattr(self.__obj, item)
+			value = getattr(self.__obj__, item)
 
 			# If the member of obj is a method, we'll pass the proxy to it, instead of obj
 			if isinstance(value, MethodType):
-				value = getattr(type(self.__obj), item)
+				value = getattr(type(self.__obj__), item)
 				return value.__get__(self, type(self))
 			# If the member is of one of the following type, return its view()
 			# The view() method of ClassDecorator returns an ObjectView.
@@ -294,14 +294,14 @@ class View(object):
 			object.__getattribute__(self, key)  # Raises error if key is not in self
 			object.__setattr__(self, key, value)
 		except AttributeError:
-			setattr(self.__obj, key, value)
+			setattr(self.__obj__, key, value)
 
 	def __delattr__(self, item):
 		try:
 			object.__getattribute__(self, item)
 			object.__delattr__(self, item)
 		except AttributeError:
-			return delattr(self.__obj, item)
+			return delattr(self.__obj__, item)
 
 	@classmethod
 	def _create_class_proxy(cls, object_class: type) -> type:
@@ -312,7 +312,7 @@ class View(object):
 		"""
 		def make_method(method_name):
 			def method(*args, **kwargs):
-				return getattr(args[0].__obj, method_name)(*args[1:], **kwargs)
+				return getattr(args[0].__obj__, method_name)(*args[1:], **kwargs)
 
 			return method
 
@@ -355,9 +355,6 @@ class View(object):
 
 		return object.__new__(proxy_class)
 
-	def view(self):
-		return self
-
 
 class MultiView:
 	__combination_cache = dict()
@@ -381,10 +378,16 @@ class MultiView:
 
 			View.__init__(self, obj)
 
+		def view(self: View, **kwargs):
+			multi_obj: View = object.__new__(type(self))
+			multi_obj.__init__(self.__obj__, **kwargs)
+			return multi_obj
+
 		name = f"{MultiView.__name__}[{', '.join(c.__qualname__ for c in classes)}]"
 		methods = {
 			object.__init__.__name__: __init__,
-			object.__new__.__name__: object.__new__
+			object.__new__.__name__: object.__new__,
+			view.__name__: view
 		}
 		return type(name, classes, methods)
 
@@ -405,7 +408,12 @@ class ClassWrapperBase(Generic[ClassDecoratorDataType]):
 	__cls__: type
 
 	@staticmethod
-	def __is_wrapper(cls: Type[ClassWrapperBase] | type):
+	def __is_wrapper(cls: Type[ClassWrapperBase] | type) -> bool:
+		"""
+		Checks if cls is a class wrapper, i.e. ClassWrapperBase's grandchild.\n
+		:param cls: The class to be checked
+		:return: `True` or `False`
+		"""
 		return (
 				len(cls.__bases__) == 2 and
 				len(cls.__bases__[1].__bases__) > 0 and
@@ -414,6 +422,11 @@ class ClassWrapperBase(Generic[ClassDecoratorDataType]):
 
 	@staticmethod
 	def __get_wrapper_view(cls: type) -> Type[View]:
+		"""
+		Get the wrapper view of a wrapper.\n
+		:param cls: The wrapper.
+		:return:
+		"""
 		base: Type[ClassWrapperBase] | type = cls.__bases__[1]
 		return base.View
 
@@ -474,6 +487,9 @@ class ClassWrapperBase(Generic[ClassDecoratorDataType]):
 
 
 class ClassDecoratorData:
+	"""
+	ClassDecoratorData base class.
+	"""
 	pass
 
 

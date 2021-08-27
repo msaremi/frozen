@@ -197,14 +197,11 @@ class FreezableMethodDecorator(MethodDecorator['FreezableClassDecorator', 'Freez
 		def freezable_wrapper(*args, **kwargs):
 			obj = args[0]
 
-			if isinstance(obj, Freezable):
+			if isinstance(obj, Freezable) or isinstance(obj, View):
 				if obj.__frozen__:
 					obj.__frozen_error__(method)
 				else:
 					return method(*args, **kwargs)
-			elif isinstance(obj, View):
-				# noinspection PyProtectedMember
-				obj._View__obj.__frozen_error__(method)
 			else:
 				raise DecorationUsageError(
 					Errors.ClassNotFinalized.format(
