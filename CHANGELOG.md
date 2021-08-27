@@ -15,6 +15,10 @@
 - A bug fixed related to the class decorators, that caused inheritance in the decorators buggy.
   - The `frozen.lockable.Lockable` and `frozen.freezable.Freezable` are not bipartite! Part of them is
   implemented in the decorator `__call__` method. This part stores the data relevant to the decorator.
+- Now, `MultiView` supports `view()` without relying on `View`. This is an improved version that makes it possible
+  for the `view()` methods to also take arguments.
+  - [`frozen.core.MultiView.<locals>.view()`](src/frozen/core.py): Method added.
+  - [`frozen.core.View.view()`](src/frozen/core.py): Method removed.
 
 ### Minor changes:
 - `get_object_descendents(...)` method re-named to `get_descendents(...)`.
