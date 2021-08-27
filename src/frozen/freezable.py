@@ -7,13 +7,9 @@ import copy
 class Errors(Errors):
 	"""
 	List of error messages in this module.
-	# :cvar InconsistentCopyMethod: Error message for when the decorated class has an inconsistent signature.
 	:cvar CallingFrozenMethod: Error message for when a frozen method is called.
 	:cvar MethodNotCallable: Error message for when a `freeze` or `melt` is not allowed to be called.
 	"""
-	# InconsistentCopyMethod = \
-	# 	"`{}` class has a `copy` method with inconsistent signature. " \
-	# 	"It needs a positional 'self' parameter and a 'deep' parameter."
 	CallingFrozenMethod = \
 		"Calling `{}` method on frozen `{}` objects is not possible. " \
 		"Try making a copy of the object before calling frozen methods."
@@ -22,10 +18,20 @@ class Errors(Errors):
 
 
 class FrozenError(PermissionError):
+	"""
+	Raised when a frozen method is called on a frozen object.
+	"""
 	pass
 
 
 def freezableclass(*args, let_freeze: bool = True, let_melt: bool = False):
+	"""
+	Decorates a class to be freezable. Same as `freezable.cls`.
+	:param args:
+	:param let_freeze: Let the user freeze the freezable object at will. If false, the `freeze()` method can not be called.
+	:param let_melt: Let the user melt the freezable object at will. If false, the `melt()` method can not be called.
+	:return: The class decorator.
+	"""
 	if args:
 		cls = args[0]
 		return FreezableClassDecorator()(cls)

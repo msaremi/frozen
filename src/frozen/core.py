@@ -228,12 +228,13 @@ def wraps(
 		wrapped: Union[Type, Callable]
 ) -> None:
 	"""
-	Change the dunders of wrapper based on the wrapped
+	Change the relevant dunders of the wrapper based on the wrapped
 	:param wrapper:
 	:param wrapped:
 	:return:
 	"""
 	wrapper.__realname__ = wrapper.__name__
+	"""`__realname__` is a dunder specifically used by frozen decoders. Its primary use is debugging."""
 	wrapper.__name__ = wrapped.__name__
 	wrapper.__qualname__ = wrapped.__qualname__
 	wrapper.__doc__ = wrapped.__doc__
@@ -241,6 +242,11 @@ def wraps(
 
 
 def locked_in_view(method: FunctionType | MethodType):
+	"""
+	Decorates a method to be locked in view. Used by class wrappers.
+	:param method:
+	:return:
+	"""
 	def method_wrapper(self, *args, **kwargs):
 		if isinstance(self, View):
 			raise PermissionError(
@@ -258,6 +264,9 @@ MethodDecoratorType = TypeVar('MethodDecoratorType', bound='MethodDecorator')
 
 
 class DecorationUsageError(Exception):
+	"""
+	Raised when the decorations are problematic.
+	"""
 	pass
 
 
@@ -357,6 +366,9 @@ class View(object):
 
 
 class MultiView:
+	"""
+	A MultiView class; a View class for multiple decorators. Returns a MultiView class that inherits from `View`.
+	"""
 	__combination_cache = dict()
 
 	@classmethod
@@ -379,8 +391,14 @@ class MultiView:
 			View.__init__(self, obj)
 
 		def view(self: View, **kwargs):
+			"""
+			Returns a view of a view.
+			:param self: The view object.
+			:param kwargs:
+			:return: The view of view object.
+			"""
 			multi_obj: View = object.__new__(type(self))
-			multi_obj.__init__(self.__obj__, **kwargs)
+			multi_obj.__init__(self, **kwargs)
 			return multi_obj
 
 		name = f"{MultiView.__name__}[{', '.join(c.__qualname__ for c in classes)}]"
@@ -473,6 +491,12 @@ class ClassWrapperBase(Generic[ClassDecoratorDataType]):
 		raise NotImplementedError(Errors.MethodNotImplemented.format(self.__load__.__qualname__))
 
 	def view(self, **kwargs):
+		"""
+		Returns a view of the decorated object. Handles all frozen decorations and returns a MultiView.
+		Do not overload, unless you want to make it un-implemented!
+		:param kwargs:
+		:return:
+		"""
 		view_classes: Set[Type[View]] = set()
 
 		for cls in type(self).mro():
@@ -483,6 +507,9 @@ class ClassWrapperBase(Generic[ClassDecoratorDataType]):
 		return MultiView(frozenset(view_classes), self, **kwargs)
 
 	class View(View):
+		"""
+		The base View class of a decorator.
+		"""
 		pass
 
 
@@ -569,41 +596,68 @@ class MethodSpec(Generic[ClassDecoratorType, MethodDecoratorType]):
 
 	@property
 	def decorated_method(self) -> Callable:
+		"""
+		The decorated method that this object is holding the specs.
+		"""
 		return self._method
 
 	@property
 	def decorated_module(self) -> ModuleType:
+		"""
+		The decorated method's module that this object is holding the specs.
+		"""
 		return inspect.getmodule(self._method)
 
 	@property
 	def decorated_class_qualname(self) -> str:
+		"""
+		The decorated method's class qualname that this object is holding the specs.
+		"""
 		method_qualname = self._method.__qualname__
 		return method_qualname[:method_qualname.rfind('.')]
 
 	@property
 	def method_decorator(self) -> MethodDecoratorType:
+		"""
+		The method decorator object of the decorated method.
+		"""
 		return self._decorator
 
 	@property
 	def method_decorator_type(self) -> Type[MethodDecoratorType]:
+		"""
+		The method decorator class of the decorated method.
+		"""
 		return type(self._decorator)
 
 	@property
 	def method_decorator_name(self) -> str:
+		"""
+		The method decorator function name used to decorate the decorated method.
+		"""
 		# noinspection PyProtectedMember
 		return self._decorator._decorator_function.__name__
 
 	@property
 	def class_decorator_type(self) -> Type[ClassDecoratorType]:
+		"""
+		The pairing class decorator class of the method decorator class of the decorated method.
+		"""
 		# noinspection PyProtectedMember
 		return self._decorator._class_decorator
 
 	@property
 	def class_decorator_name(self) -> str:
+		"""
+		The pairing class decorator function name used along with this method's method decorator.
+		"""
 		# noinspection PyProtectedMember
 		return self._decorator._class_decorator._decorator_function.__name__
 
 	def has_same_class(self, other: MethodSpec[ClassDecoratorType, MethodDecoratorType]) -> bool:
+		"""
+		Returns `True` if the methods of `self` and `other` specs belong to the same class.
+		"""
 		return (
 				self.decorated_module == other.decorated_module and
 				self.decorated_class_qualname == other.decorated_class_qualname
@@ -629,3 +683,7 @@ class ModuleElements:
 
 current_decorator_specs: DefaultDict[Type, Set[MethodSpec[ClassDecoratorType, MethodDecoratorType]]] = \
 	defaultdict(lambda: set())
+"""
+Hold information about the current class that is being decorated. 
+Used to make sure that the process is being done correctly.
+"""
