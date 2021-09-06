@@ -13,9 +13,9 @@ class Errors(Errors):
 	:cvar NoFriendsDefined: Error message for when no friends have been introduced to the decorator.
 	"""
 	CallingAlienMethod = \
-		"Alien `{}` object is not allowed to call `{}` method on `{}` objects."
+		"Alien `{}` object is not allowed to call `{}` method."
 	NoFriendsDefined = \
-		"No friends have been defined for `{}`." \
+		"No friends have been defined for `{}` decorator. " \
 		"Use `friends` parameter to define the friends."
 
 
@@ -35,8 +35,7 @@ class Alienatable(ClassWrapperBase['AlienatableClassDecoratorData']):
 		"""
 		raise AlienError(Errors.CallingAlienMethod.format(
 				None if calling_cls is None else calling_cls.__qualname__,
-				method.__name__,
-				type(self).__qualname__
+				method.__qualname__
 		))
 
 
@@ -54,7 +53,7 @@ def alienatableclass(
 class AlienatableClassDecorator(ClassDecorator['AlienatableClassDecorator', 'AlienatableMethodDecorator']):
 	def __init__(self, friends: Union[Dict[str, Optional[Set[Type]]], Set[Type]] = None):
 		if friends is None:
-			raise ValueError(Errors.NoFriendsDefined.format(self._decorator_function))
+			raise ValueError(Errors.NoFriendsDefined.format(self._decorator_function.__qualname__))
 		elif isinstance(friends, dict):
 			friends = friends.items()
 		elif isinstance(friends, Iterable):
@@ -121,13 +120,8 @@ class AlienatableMethodDecorator(MethodDecorator['AlienatableClassDecorator', 'A
 
 	@functools.lru_cache()
 	def get_valid_classes(self, cls):
-		friends = set()
-
-		for cls in cls.__mro__:
-			if isinstance(cls.__decorator__, AlienatableClassDecoratorData):
-				friends = cls.__decorator__.friends
-				break
-
+		wrapper = get_wrapper_class(cls, Alienatable)
+		friends = wrapper.__decorator__.friends if wrapper is not None else set()
 		allowed_classes = set().union(*(friends[key] for key in self.friend_list | {None}))
 		return allowed_classes
 

@@ -8,10 +8,10 @@ from frozen.core import *
 
 class Errors(Errors):
 	NoLocksDefined = \
-		"No locks have been defined for `{}`. " \
+		"No locks have been defined for `{}` decorator. " \
 		"Use `lock_permissions` parameter to define the locks."
 	NoKeysDefined = \
-		"No keys have been defined for `{}`. " \
+		"No keys have been defined for `{}` decorator. " \
 		"Use `keys` parameter to define the keys."
 	CallingLockedMethod = \
 		"`{}` method is locked with key '{}'."
