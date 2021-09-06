@@ -49,12 +49,8 @@ However, once the object is frozen, its value cannot be set further.
 ```pycon
 >>> immutable.freeze()
 >>> immutable.value = "new value"
-```
-```diff
-! frozen.freezable.FrozenError: Calling `value` method on frozen `Immutable` objects is not possible. 
-! Try making a copy of the object before calling frozen methods.
-```
-```pycon
+### frozen.freezable.FrozenError: Calling `value` method on frozen `Immutable` objects is not possible. 
+###                               Try making a copy of the object before calling frozen methods.
 >>> immutable.value
 'value'
 ```
