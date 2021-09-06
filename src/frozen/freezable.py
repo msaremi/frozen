@@ -229,6 +229,7 @@ class ModuleElements(ModuleElements):
 
 
 FreezableClassDecorator._decorator_function = freezableclass
+FreezableClassDecorator._class_wrapper_base = Freezable
 FreezableClassDecorator._method_decorator = FreezableMethodDecorator
 FreezableMethodDecorator._decorator_function = freezablemethod
 FreezableMethodDecorator._class_decorator = FreezableClassDecorator

@@ -284,7 +284,7 @@ class LockableClassDecoratorData(ClassDecoratorData):
 			self.unlock_permissions[lock].add(cls)
 
 		if issubclass(cls, Lockable):
-			wrapper = get_wrapper_class(cls, Lockable)
+			wrapper = LockableClassDecorator.get_wrapper_class(cls)
 
 			for lock, cls_set in wrapper.__decorator__.lock_permissions.items():
 				if lock not in self.lock_permissions:
@@ -354,6 +354,7 @@ class ModuleElements(ModuleElements):
 
 
 LockableClassDecorator._decorator_function = lockableclass
+LockableClassDecorator._class_wrapper_base = Lockable
 LockableClassDecorator._method_decorator = LockableMethodDecorator
 LockableMethodDecorator._decorator_function = lockablemethod
 LockableMethodDecorator._class_decorator = LockableClassDecorator

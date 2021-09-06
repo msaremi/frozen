@@ -158,14 +158,14 @@ def is_calling_class_valid(allowed_classes: Set[type] | None) -> Tuple[bool, Lis
 	return found, calling_classes
 
 
-def get_wrapper_class(
-		cls: type, wrapper_type: Type[ClassWrapperBase]
-) -> Type[ClassWrapperBase] | type | None:
-	for cls in cls.__mro__:
-		if len(cls.__bases__) == 2 and cls.__bases__[1] == wrapper_type:
-			return cls
-
-	return None
+# def get_wrapper_class(
+# 		cls: type, wrapper_type: Type[ClassWrapperBase]
+# ) -> Type[ClassWrapperBase] | type | None:
+# 	for cls in cls.__mro__:
+# 		if len(cls.__bases__) == 2 and cls.__bases__[1] == wrapper_type:
+# 			return cls
+#
+# 	return None
 
 
 def get_descendents(
@@ -553,6 +553,17 @@ class ClassDecoratorData:
 class ClassDecorator(Generic[ClassDecoratorType, MethodDecoratorType]):
 	_decorator_function: FunctionType = None
 	_method_decorator: Type[MethodDecoratorType] = None
+	_class_wrapper_base: Type[ClassWrapperBase] = None
+
+	@classmethod
+	def get_wrapper_class(cls, target_cls: type) -> Type[ClassWrapperBase] | type | None:
+		wrapper_type = cls._class_wrapper_base
+
+		for c in target_cls.__mro__:
+			if len(c.__bases__) == 2 and c.__bases__[1] == wrapper_type:
+				return c
+
+		return None
 
 	# noinspection PyProtectedMember
 	@property

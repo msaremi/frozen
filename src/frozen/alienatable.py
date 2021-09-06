@@ -94,7 +94,9 @@ class AlienatableClassDecoratorData(ClassDecoratorData):
 		# 	self.friends.update(spec.method_decorator.friend_list)
 
 		if issubclass(cls, Alienatable):
-			for key, cls_set in cls.__decorator__.friends.items():
+			wrapper = AlienatableClassDecorator.get_wrapper_class(cls)
+
+			for key, cls_set in wrapper.__decorator__.friends.items():
 				if self.friends[key] is None:
 					self.friends[key] = cls_set
 				else:
@@ -120,7 +122,7 @@ class AlienatableMethodDecorator(MethodDecorator['AlienatableClassDecorator', 'A
 
 	@functools.lru_cache()
 	def get_valid_classes(self, cls):
-		wrapper = get_wrapper_class(cls, Alienatable)
+		wrapper = AlienatableClassDecorator.get_wrapper_class(cls)
 		friends = wrapper.__decorator__.friends if wrapper is not None else set()
 		allowed_classes = set().union(*(friends[key] for key in self.friend_list | {None}))
 		return allowed_classes
@@ -161,6 +163,7 @@ class ModuleElements(ModuleElements):
 
 
 AlienatableClassDecorator._decorator_function = alienatableclass
+AlienatableClassDecorator._class_wrapper_base = Alienatable
 AlienatableClassDecorator._method_decorator = AlienatableMethodDecorator
 AlienatableMethodDecorator._decorator_function = alienatablemethod
 AlienatableMethodDecorator._class_decorator = AlienatableClassDecorator
