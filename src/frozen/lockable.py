@@ -1,10 +1,14 @@
+"""
+This module adds the lockability feature to classes
+"""
+
 from __future__ import annotations
-from .core import *
+from frozen.core import *
 
 
 class Errors(Errors):
 	NoLocksDefined = \
-		"No keys have been defined for `{}`. " \
+		"No locks have been defined for `{}`. " \
 		"Use `lock_permissions` parameter to define the locks."
 	NoKeysDefined = \
 		"No keys have been defined for `{}`. " \
@@ -33,20 +37,20 @@ class LockError(PermissionError):
 
 def lockableclass(
 		*args,
-		lock_permissions: Dict[str, Optional[Set]] = None,
-		unlock_permissions: Dict[str, Optional[Set]] = None
+		lock_permissions: Dict[str, Optional[Set[type]]] = None,
+		unlock_permissions: Dict[str, Optional[Set[type]]] = None
 ):
 	if args:
 		cls = args[0]
-		return LockableClassDecorator()(cls)
+		return lockable.cls()(cls)
 	else:
-		return LockableClassDecorator(lock_permissions=lock_permissions, unlock_permissions=unlock_permissions)
+		return lockable.cls(lock_permissions=lock_permissions, unlock_permissions=unlock_permissions)
 
 
 class Lockable(ClassWrapperBase['LockableClassDecoratorData']):
-	def __init__(self, args: tuple, kwargs: dict, wrapper_cls: Type[Lockable]):
-		self.__view = None
-		ClassWrapperBase.__init__(self, args=args, kwargs=kwargs, wrapper_cls=wrapper_cls)
+	__locks__: Set[str]
+	# def __init__(self, args: tuple, kwargs: dict, wrapper_cls: Type[Lockable]):
+	# 	ClassWrapperBase.__init__(self, args=args, kwargs=kwargs, wrapper_cls=wrapper_cls)
 
 	def __load__(self, locks: Iterable[str] = None) -> None:
 		self.__locks__ = set()
@@ -55,25 +59,25 @@ class Lockable(ClassWrapperBase['LockableClassDecoratorData']):
 			for key in locks:
 				self.lock(key)
 
-	@staticmethod
-	def _is_calling_class_valid(allowed_classes: Set[type] | None) -> Tuple[bool, List[type | None]]:
-		calling_classes = []
-		found = False
-
-		for _, cls in trace_execution(allowed_classes):
-			if cls is not None:
-				found = next(
-					(True for c in allowed_classes if issubclass(cls, c)),
-					False
-				)
-
-				calling_classes.append(cls)
-
-			if found:
-				break
-
-		calling_classes.append(None)
-		return found, calling_classes
+	# @staticmethod
+	# def _is_calling_class_valid(allowed_classes: Set[type] | None) -> Tuple[bool, List[type | None]]:
+	# 	calling_classes = []
+	# 	found = False
+	#
+	# 	for _, cls in trace_execution(allowed_classes):
+	# 		if cls is not None:
+	# 			found = next(
+	# 				(True for c in allowed_classes if issubclass(cls, c)),
+	# 				False
+	# 			)
+	#
+	# 			calling_classes.append(cls)
+	#
+	# 		if found:
+	# 			break
+	#
+	# 	calling_classes.append(None)
+	# 	return found, calling_classes
 
 	def lock(self, key: str) -> None:
 		"""
@@ -154,8 +158,8 @@ class Lockable(ClassWrapperBase['LockableClassDecoratorData']):
 class LockableClassDecorator(ClassDecorator['LockableClassDecorator', 'LockableMethodDecorator']):
 	def __init__(
 			self,
-			lock_permissions: Dict[str, Optional[Set]] = None,
-			unlock_permissions: Dict[str, Optional[Set]] = None
+			lock_permissions: Dict[str, Optional[Set[type]]] = None,
+			unlock_permissions: Dict[str, Optional[Set[type]]] = None
 	):
 		"""
 		Lockable decorator.\n
@@ -188,8 +192,8 @@ class LockableClassDecorator(ClassDecorator['LockableClassDecorator', 'LockableM
 			)
 
 		self.locks: Set[str] = locks
-		self.lock_permissions: DefaultDict[str, Optional[Set]] = defaultdict(lambda: None, lock_permissions)
-		self.unlock_permissions: DefaultDict[str, Optional[Set]] = defaultdict(lambda: None, unlock_permissions)
+		self.lock_permissions: DefaultDict[str, Optional[Set[type]]] = defaultdict(lambda: None, lock_permissions)
+		self.unlock_permissions: DefaultDict[str, Optional[Set[type]]] = defaultdict(lambda: None, unlock_permissions)
 
 	def __call__(self, cls, *_):
 		super().__call__(cls)
@@ -215,7 +219,7 @@ class LockableClassDecorator(ClassDecorator['LockableClassDecorator', 'LockableM
 					if LockableWrapper.__decorator__.lock_permissions[key] is None:
 						self.__locks__.add(key)
 					else:
-						found, calling_classes = self._is_calling_class_valid(
+						found, calling_classes = is_calling_class_valid(
 							LockableWrapper.__decorator__.lock_permissions[key]
 						)
 
@@ -252,13 +256,14 @@ class LockableClassDecorator(ClassDecorator['LockableClassDecorator', 'LockableM
 				else:
 					self.__lock_key_error__(key)
 
-		return super().__call__(cls, LockableWrapper)
+		super().__call__(cls, LockableWrapper)
+		return LockableWrapper
 
 
 class LockableClassDecoratorData(ClassDecoratorData):
 	locks: Set[str]
-	lock_permissions: DefaultDict[str, Optional[Set]]
-	unlock_permissions: DefaultDict[str, Optional[Set]]
+	lock_permissions: DefaultDict[str, Optional[Set[type]]]
+	unlock_permissions: DefaultDict[str, Optional[Set[type]]]
 
 	def __init__(
 			self,
@@ -293,15 +298,15 @@ class LockableClassDecoratorData(ClassDecoratorData):
 def lockablemethod(*args, keys: Iterable[str] = None):
 	if args:
 		method = args[0]
-		return LockableMethodDecorator()(method)
+		return lockable.mth()(method)
 	else:
-		return LockableMethodDecorator(keys=keys)
+		return lockable.mth(keys=keys)
 
 
 class LockableMethodDecorator(MethodDecorator['LockableClassDecorator', 'LockableMethodDecorator']):
 	def __init__(self, keys: Iterable[str] = None):
 		if keys is not None:
-			self._keys = frozenset(keys)
+			self.keys = frozenset(keys)
 		else:
 			raise ValueError(Errors.NoKeysDefined.format(self._decorator_function.__name__))
 
@@ -312,7 +317,7 @@ class LockableMethodDecorator(MethodDecorator['LockableClassDecorator', 'Lockabl
 			obj = args[0]
 
 			if isinstance(obj, Lockable) or isinstance(obj, View):
-				keys = self._keys.intersection(obj.__locks__)
+				keys = self.keys.intersection(obj.__locks__)
 
 				if keys:
 					obj.__locked_error__(next(iter(keys)), method)
@@ -328,13 +333,27 @@ class LockableMethodDecorator(MethodDecorator['LockableClassDecorator', 'Lockabl
 
 		return super().__call__(method, lockable_wrapper)
 
-	@property
-	def keys(self):
-		return self._keys
+	# @property
+	# def keys(self):
+	# 	return self._keys
+
+
+class ModuleElements(ModuleElements):
+	@staticmethod
+	def cls(
+			lock_permissions: Dict[str, Optional[Set[type]]] = None,
+			unlock_permissions: Dict[str, Optional[Set[type]]] = None
+	) -> LockableClassDecorator:
+		return LockableClassDecorator(lock_permissions=lock_permissions, unlock_permissions=unlock_permissions)
+
+	@staticmethod
+	def mth(keys: Iterable[str] = None) -> LockableMethodDecorator:
+		return LockableMethodDecorator(keys=keys)
 
 
 LockableClassDecorator._decorator_function = lockableclass
 LockableClassDecorator._method_decorator = LockableMethodDecorator
 LockableMethodDecorator._decorator_function = lockablemethod
 LockableMethodDecorator._class_decorator = LockableClassDecorator
-lockable = ModuleElements(mth=lockablemethod, cls=lockableclass)
+# lockable = ModuleElements(mth=lockablemethod, cls=lockableclass)
+lockable = ModuleElements()

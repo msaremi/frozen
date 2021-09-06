@@ -1,7 +1,11 @@
 # Package Frozen :snowman:
 
 Package Frozen :snowman: is a python package that adds 
-immutability and lockability features to python classes.
+immutability, lockability, and alienatability features to python classes.
+
+- **Immutability**: As long as an object is immutable, no changes are allowed to be made on it.
+- **Lockability**: The locked members of an object are not allowed to be called. Only permitted classes and lock/unlock an object. 
+- **Alienatability**: Makes class members permanently alien to other classes. Only friend classes can access those members. 
 
 ## Examples
 ### Freezable Decorator

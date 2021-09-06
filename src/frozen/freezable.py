@@ -1,19 +1,18 @@
-from __future__ import annotations
+"""
+This module adds the freezability feature to classes
+"""
 
-from .core import *
+from __future__ import annotations
+from frozen.core import *
 import copy
 
 
 class Errors(Errors):
 	"""
 	List of error messages in this module.
-	# :cvar InconsistentCopyMethod: Error message for when the decorated class has an inconsistent signature.
 	:cvar CallingFrozenMethod: Error message for when a frozen method is called.
 	:cvar MethodNotCallable: Error message for when a `freeze` or `melt` is not allowed to be called.
 	"""
-	# InconsistentCopyMethod = \
-	# 	"`{}` class has a `copy` method with inconsistent signature. " \
-	# 	"It needs a positional 'self' parameter and a 'deep' parameter."
 	CallingFrozenMethod = \
 		"Calling `{}` method on frozen `{}` objects is not possible. " \
 		"Try making a copy of the object before calling frozen methods."
@@ -28,15 +27,16 @@ class FrozenError(PermissionError):
 def freezableclass(*args, let_freeze: bool = True, let_melt: bool = False):
 	if args:
 		cls = args[0]
-		return FreezableClassDecorator()(cls)
+		return freezable.cls()(cls)
+		# return FreezableClassDecorator()(cls)
 	else:
-		return FreezableClassDecorator(let_freeze=let_freeze, let_melt=let_melt)
+		return freezable.cls(let_freeze=let_freeze, let_melt=let_melt)
+		# return FreezableClassDecorator(let_freeze=let_freeze, let_melt=let_melt)
 
 
 class Freezable(ClassWrapperBase['FreezableClassDecoratorData']):
-	def __init__(self, args, kwargs, wrapper_cls: Type[Freezable]):
-		self.__view = None
-		ClassWrapperBase.__init__(self, args=args, kwargs=kwargs, wrapper_cls=wrapper_cls)
+	# def __init__(self, args, kwargs, wrapper_cls: Type[Freezable]):
+	# 	ClassWrapperBase.__init__(self, args=args, kwargs=kwargs, wrapper_cls=wrapper_cls)
 
 	def __load__(self, frozen: bool = False):
 		self.__frozen__ = frozen
@@ -115,16 +115,8 @@ class FreezableClassDecorator(ClassDecorator['FreezableClassDecorator', 'Freezab
 		:param let_freeze: Let the object call the freeze method in cases other than `__init__` or `copy`
 		:param let_melt: Same as `let_freeze`
 		"""
-		self._let_freeze = let_freeze
-		self._let_melt = let_melt
-
-	@property
-	def let_freeze(self):
-		return self._let_freeze
-
-	@property
-	def let_melt(self):
-		return self._let_melt
+		self.let_freeze = let_freeze
+		self.let_melt = let_melt
 
 	def __call__(self, cls, *_):
 		"""
@@ -167,7 +159,8 @@ class FreezableClassDecorator(ClassDecorator['FreezableClassDecorator', 'Freezab
 						Errors.MethodNotCallable.format(FreezableWrapper.melt.__name__, type(self).__qualname__)
 					)
 
-		return super().__call__(cls, FreezableWrapper)
+		super().__call__(cls, FreezableWrapper)
+		return FreezableWrapper
 
 
 class FreezableClassDecoratorData(ClassDecoratorData):
@@ -185,9 +178,11 @@ class FreezableClassDecoratorData(ClassDecoratorData):
 def freezablemethod(*args):
 	if args:
 		method = args[0]
-		return FreezableMethodDecorator()(method)
+		return freezable.mth()(method)
+		# return FreezableMethodDecorator()(method)
 	else:
-		return FreezableMethodDecorator()
+		return freezable.mth()
+		# return FreezableMethodDecorator()
 
 
 class FreezableMethodDecorator(MethodDecorator['FreezableClassDecorator', 'FreezableMethodDecorator']):
@@ -216,8 +211,19 @@ class FreezableMethodDecorator(MethodDecorator['FreezableClassDecorator', 'Freez
 		return super().__call__(method, freezable_wrapper)
 
 
+class ModuleElements(ModuleElements):
+	@staticmethod
+	def cls(let_freeze: bool = True, let_melt: bool = False) -> FreezableClassDecorator:
+		return FreezableClassDecorator(let_freeze=let_freeze, let_melt=let_melt)
+
+	@staticmethod
+	def mth() -> FreezableMethodDecorator:
+		return FreezableMethodDecorator()
+
+
 FreezableClassDecorator._decorator_function = freezableclass
 FreezableClassDecorator._method_decorator = FreezableMethodDecorator
 FreezableMethodDecorator._decorator_function = freezablemethod
 FreezableMethodDecorator._class_decorator = FreezableClassDecorator
-freezable = ModuleElements(mth=freezablemethod, cls=freezableclass)
+# freezable = ModuleElements(mth=freezablemethod, cls=freezableclass)
+freezable = ModuleElements()
