@@ -13,6 +13,8 @@
   - [`frozen.core.is_calling_class_valid`](src/frozen/core.py): Method added.
   - [`frozen.lockable.Lockable._is_calling_class_valid`](src/frozen/lockable.py): Method removed.
 - `Lockable`'s and `Freezable`'s `__init__` removed as they had the same signature as the parent class.
+- Bug in `LockableClassDecoratorData` fixed.
+  - [`frozen.lockable.LockableClassDecoratorData.__init__`](src/frozen/lockable.py): wrapper retrieval corrected.
 
 ## Version `0.0.5`
 

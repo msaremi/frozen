@@ -284,15 +284,17 @@ class LockableClassDecoratorData(ClassDecoratorData):
 			self.unlock_permissions[lock].add(cls)
 
 		if issubclass(cls, Lockable):
-			for lock, cls_set in cls.__decorator__.lock_permissions.items():
+			wrapper = get_wrapper_class(cls, Lockable)
+
+			for lock, cls_set in wrapper.__decorator__.lock_permissions.items():
 				if lock not in self.lock_permissions:
 					self.lock_permissions[lock] = cls_set
 
-			for lock, cls_set in cls.__decorator__.unlock_permissions.items():
+			for lock, cls_set in wrapper.__decorator__.unlock_permissions.items():
 				if lock not in self.unlock_permissions:
 					self.unlock_permissions[lock] = cls_set
 
-			self.locks.update(cls.__decorator__.locks)
+			self.locks.update(wrapper.__decorator__.locks)
 
 
 def lockablemethod(*args, keys: Iterable[str] = None):
