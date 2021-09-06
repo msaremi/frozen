@@ -138,6 +138,26 @@ def trace_execution(
 		frame = frame.f_back
 
 
+def is_calling_class_valid(allowed_classes: Set[type] | None) -> Tuple[bool, List[type | None]]:
+	calling_classes = []
+	found = False
+
+	for _, cls in trace_execution(allowed_classes):
+		if cls is not None:
+			found = next(
+				(True for c in allowed_classes if issubclass(cls, c)),
+				False
+			)
+
+			calling_classes.append(cls)
+
+		if found:
+			break
+
+	calling_classes.append(None)
+	return found, calling_classes
+
+
 def get_descendents(
 		obj: object,
 		include_methods: bool = False,
@@ -664,21 +684,34 @@ class MethodSpec(Generic[ClassDecoratorType, MethodDecoratorType]):
 		)
 
 
+# class ModuleElements:
+# 	"""
+# 	Can be inherited by internal classes.
+# 	"""
+# 	def __init__(self, mth, cls):
+# 		self._mth = mth
+# 		self._cls = cls
+#
+# 	@property
+# 	def mth(self) -> Callable:
+# 		return self._mth
+#
+# 	@property
+# 	def cls(self) -> Callable:
+# 		return self._cls
+
+
 class ModuleElements:
 	"""
 	Can be inherited by internal classes.
 	"""
-	def __init__(self, mth, cls):
-		self._mth = mth
-		self._cls = cls
+	@staticmethod
+	def cls(*args, **kwargs) -> ClassDecorator:
+		raise NotImplementedError(Errors.MethodNotImplemented.format(ModuleElements.cls.__qualname__))
 
-	@property
-	def mth(self) -> Callable:
-		return self._mth
-
-	@property
-	def cls(self) -> Callable:
-		return self._cls
+	@staticmethod
+	def mth(*args, **kwargs) -> MethodDecorator:
+		raise NotImplementedError(Errors.MethodNotImplemented.format(ModuleElements.mth.__qualname__))
 
 
 current_decorator_specs: DefaultDict[Type, Set[MethodSpec[ClassDecoratorType, MethodDecoratorType]]] = \

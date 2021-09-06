@@ -1,5 +1,19 @@
 # Changelog
 
+## Version `0.0.6`
+
+###Major changes
+- The alienatable module was added. This makes some methods only callable by friend classes.
+- Changes in `ModuleElements` to make the decorators easier to use by increasing clarity.
+  - Now, `lockable/freezable/alienatable.cls/mth` require a parenthesis.
+
+
+##Minor changes
+- Method `is_calling_class_valid` moved to core
+  - [`frozen.core.is_calling_class_valid`](src/frozen/core.py): Method added.
+  - [`frozen.lockable.Lockable._is_calling_class_valid`](src/frozen/lockable.py): Method removed.
+- `Lockable`'s and `Freezable`'s `__init__` removed as they had the same signature as the parent class.
+
 ## Version `0.0.5`
 
 ### Major changes:
