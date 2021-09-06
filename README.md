@@ -8,16 +8,18 @@ immutability, lockability, and alienatability features to python classes.
 - **Alienatability**: Makes class members permanently alien to other classes. Only friend classes can access those members. 
 
 ## Examples
-### Freezable Decorator
+### Immutability
+Immutability is made possible through the freezable decorators.
+
 As a simple example, we make a freezable class that can be arbitrarily frozen. 
-We use the `@freezableclass` and `@freezablemethod` decorators.
+We use the `@freezable.cls` and `@freezable.mth` decorators.
 
 ```python
-from frozen import freezableclass, freezablemethod
+from frozen import freezable
 
 
 # A freezable class the can be frozen on upon desire
-@freezableclass
+@freezable.cls()
 class Immutable:
 	def __init__(self, value=None):
 		self._value = value
@@ -28,7 +30,7 @@ class Immutable:
 
 	@value.setter
 	# This method is freezable and can not be called on frozen objects.
-	@freezablemethod
+	@freezable.mth()
 	def value(self, value):
 		self._value = value
 ``` 
@@ -36,7 +38,6 @@ class Immutable:
 We can make an instance of the class and set its value.
 
 ```pycon
->>> from test import Immutable
 >>> immutable = Immutable()
 >>> immutable.value = "value"
 >>> immutable.value
@@ -47,11 +48,9 @@ However, once the object is frozen, its value cannot be set further.
 
 ```pycon
 >>> immutable.freeze()
->>> try:
-... 	immutable.value = "new value"
-... except:
-... 	print("Cannot assign frozen attribute.")
-Cannot assign frozen attribute.
+>>> immutable.value = "new value"
+# frozen.freezable.FrozenError: Calling `value` method on frozen `Immutable` objects is not possible. 
+# Try making a copy of the object before calling frozen methods.
 >>> immutable.value
 'value'
 ```
