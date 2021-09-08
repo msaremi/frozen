@@ -2,7 +2,7 @@
 
 ## Version `0.0.6`
 
-###Major changes
+### Major changes
 - The alienatable module was added. This makes some methods only callable by friend classes.
 - Changes in `ModuleElements` to make the decorators easier to use by increasing clarity.
   - Now, `lockable/freezable/alienatable()/.method()` require a parenthesis.
@@ -14,7 +14,7 @@
   - [`frozen.core.trace_execution:113`](src/frozen/core.py): invokes `search_locations` superficially for subclasses.
   - [`frozen.core.get_members`](src/frozen/core.py): Method modified to support superficial search.
 
-###Minor changes
+### Minor changes
 - Method `is_calling_class_valid` moved to core
   - [`frozen.core.is_calling_class_valid`](src/frozen/core.py): Method added.
   - [`frozen.lockable.Lockable._is_calling_class_valid`](src/frozen/lockable.py): Method removed.
