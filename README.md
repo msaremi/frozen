@@ -12,14 +12,14 @@ immutability, lockability, and alienatability features to python classes.
 Immutability is made possible through the freezable decorators.
 
 As a simple example, we make a freezable class that can be arbitrarily frozen. 
-We use the `@freezable.cls` and `@freezable.mth` decorators.
+We use the `@freezable.cls` and `@freezable.method` decorators.
 
 ```python
 from frozen import freezable
 
 
 # A freezable class the can be frozen on upon desire
-@freezable.cls()
+@freezable()
 class Immutable:
 	def __init__(self, value=None):
 		self._value = value
@@ -30,7 +30,7 @@ class Immutable:
 
 	@value.setter
 	# This method is freezable and can not be called on frozen objects.
-	@freezable.mth()
+	@freezable.method()
 	def value(self, value):
 		self._value = value
 ``` 

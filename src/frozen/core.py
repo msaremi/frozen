@@ -709,12 +709,12 @@ class MethodSpec(Generic[ClassDecoratorType, MethodDecoratorType]):
 # 	"""
 # 	Can be inherited by internal classes.
 # 	"""
-# 	def __init__(self, mth, cls):
-# 		self._mth = mth
+# 	def __init__(self, method, cls):
+# 		self._mth = method
 # 		self._cls = cls
 #
 # 	@property
-# 	def mth(self) -> Callable:
+# 	def method(self) -> Callable:
 # 		return self._mth
 #
 # 	@property
@@ -726,13 +726,16 @@ class ModuleElements:
 	"""
 	Can be inherited by internal classes.
 	"""
-	@staticmethod
-	def cls(*args, **kwargs) -> ClassDecorator:
-		raise NotImplementedError(Errors.MethodNotImplemented.format(ModuleElements.cls.__qualname__))
+	def __call__(self, *args, **kwargs):
+		raise NotImplementedError(Errors.MethodNotImplemented.format(ModuleElements.__call__.__qualname__))
+
+	# @staticmethod
+	# def cls(*args, **kwargs) -> ClassDecorator:
+	# 	raise NotImplementedError(Errors.MethodNotImplemented.format(ModuleElements.cls.__qualname__))
 
 	@staticmethod
-	def mth(*args, **kwargs) -> MethodDecorator:
-		raise NotImplementedError(Errors.MethodNotImplemented.format(ModuleElements.mth.__qualname__))
+	def method(*args, **kwargs) -> MethodDecorator:
+		raise NotImplementedError(Errors.MethodNotImplemented.format(ModuleElements.method.__qualname__))
 
 
 current_decorator_specs: DefaultDict[Type, Set[MethodSpec[ClassDecoratorType, MethodDecoratorType]]] = \

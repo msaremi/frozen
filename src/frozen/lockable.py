@@ -309,33 +309,33 @@ def lockableclass(
 		lock_permissions: Dict[str, Optional[Set[type]]] = None,
 		unlock_permissions: Dict[str, Optional[Set[type]]] = None
 ):
-	"""Fancy alternative to `lockable.cls`, requires no parenthesis"""
+	"""Fancy alternative to `lockable`, requires no parenthesis"""
 	if args:
 		cls = args[0]
-		return lockable.cls()(cls)
+		return lockable()(cls)
 	else:
-		return lockable.cls(lock_permissions=lock_permissions, unlock_permissions=unlock_permissions)
+		return lockable(lock_permissions=lock_permissions, unlock_permissions=unlock_permissions)
 
 
 def lockablemethod(*args, keys: Iterable[str] = None):
-	"""Fancy alternative to `lockable.mth`, requires no parenthesis"""
+	"""Fancy alternative to `lockable.method`, requires no parenthesis"""
 	if args:
 		method = args[0]
-		return lockable.mth()(method)
+		return lockable.method()(method)
 	else:
-		return lockable.mth(keys=keys)
+		return lockable.method(keys=keys)
 
 
 class ModuleElements(ModuleElements):
-	@staticmethod
-	def cls(
+	def __call__(
+			self,
 			lock_permissions: Dict[str, Optional[Set[type]]] = None,
 			unlock_permissions: Dict[str, Optional[Set[type]]] = None
 	) -> LockableClassDecorator:
 		return LockableClassDecorator(lock_permissions=lock_permissions, unlock_permissions=unlock_permissions)
 
 	@staticmethod
-	def mth(keys: Iterable[str] = None) -> LockableMethodDecorator:
+	def method(keys: Iterable[str] = None) -> LockableMethodDecorator:
 		return LockableMethodDecorator(keys=keys)
 
 

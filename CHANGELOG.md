@@ -5,10 +5,10 @@
 ###Major changes
 - The alienatable module was added. This makes some methods only callable by friend classes.
 - Changes in `ModuleElements` to make the decorators easier to use by increasing clarity.
-  - Now, `lockable/freezable/alienatable.cls/mth` require a parenthesis.
+  - Now, `lockable/freezable/alienatable()/.method()` require a parenthesis.
 
 
-##Minor changes
+###Minor changes
 - Method `is_calling_class_valid` moved to core
   - [`frozen.core.is_calling_class_valid`](src/frozen/core.py): Method added.
   - [`frozen.lockable.Lockable._is_calling_class_valid`](src/frozen/lockable.py): Method removed.

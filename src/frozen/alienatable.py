@@ -142,30 +142,29 @@ def alienatableclass(
 		*args,
 		friends: Dict[str, Optional[Set[type]]] | Set[type] = None
 ):
-	"""Fancy alternative to `alienatable.cls`, requires no parenthesis"""
+	"""Fancy alternative to `alienatable`, requires no parenthesis"""
 	if args:
 		cls = args[0]
-		return alienatable.cls()(cls)
+		return alienatable()(cls)
 	else:
-		return alienatable.cls(friends=friends)
+		return alienatable(friends=friends)
 
 
 def alienatablemethod(*args, friend_list: Iterable[str] | str = None):
-	"""Fancy alternative to `alienatable.mth`, requires no parenthesis"""
+	"""Fancy alternative to `alienatable.method`, requires no parenthesis"""
 	if args:
 		method = args[0]
-		return alienatable.mth()(method)
+		return alienatable.method()(method)
 	else:
-		return alienatable.mth(friend_list=friend_list)
+		return alienatable.method(friend_list=friend_list)
 
 
 class ModuleElements(ModuleElements):
-	@staticmethod
-	def cls(friends: Dict[str, Optional[Set[type]]] | Set[type] = None) -> AlienatableClassDecorator:
+	def __call__(self, friends: Dict[str, Optional[Set[type]]] | Set[type] = None) -> AlienatableClassDecorator:
 		return AlienatableClassDecorator(friends=friends)
 
 	@staticmethod
-	def mth(friend_list: Iterable[str] | str = None) -> AlienatableMethodDecorator:
+	def method(friend_list: Iterable[str] | str = None) -> AlienatableMethodDecorator:
 		return AlienatableMethodDecorator(friend_list=friend_list)
 
 

@@ -195,26 +195,25 @@ class FreezableMethodDecorator(MethodDecorator['FreezableClassDecorator', 'Freez
 
 
 def freezableclass(*args, let_freeze: bool = True, let_melt: bool = False):
-	"""Fancy alternative to `freezable.cls`, requires no parenthesis"""
+	"""Fancy alternative to `freezable`, requires no parenthesis"""
 	if args:
 		cls = args[0]
-		return freezable.cls()(cls)
+		return freezable()(cls)
 	else:
-		return freezable.cls(let_freeze=let_freeze, let_melt=let_melt)
+		return freezable(let_freeze=let_freeze, let_melt=let_melt)
 
 
 def freezablemethod(*args):
-	"""Fancy alternative to `freezable.mth`, requires no parenthesis"""
+	"""Fancy alternative to `freezable.method`, requires no parenthesis"""
 	if args:
 		method = args[0]
-		return freezable.mth()(method)
+		return freezable.method()(method)
 	else:
-		return freezable.mth()
+		return freezable.method()
 
 
 class ModuleElements(ModuleElements):
-	@staticmethod
-	def cls(let_freeze: bool = True, let_melt: bool = False) -> FreezableClassDecorator:
+	def __call__(self, let_freeze: bool = True, let_melt: bool = False) -> FreezableClassDecorator:
 		"""
 		Decorates a class to be freezable
 		:param let_freeze: Let the user freeze the freezable object at will.
@@ -224,8 +223,12 @@ class ModuleElements(ModuleElements):
 		"""
 		return FreezableClassDecorator(let_freeze=let_freeze, let_melt=let_melt)
 
+	# @staticmethod
+	# def cls(let_freeze: bool = True, let_melt: bool = False) -> FreezableClassDecorator:
+	# 	return FreezableClassDecorator(let_freeze=let_freeze, let_melt=let_melt)
+
 	@staticmethod
-	def mth() -> FreezableMethodDecorator:
+	def method() -> FreezableMethodDecorator:
 		return FreezableMethodDecorator()
 
 
