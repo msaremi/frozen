@@ -212,7 +212,7 @@ class LockableClassDecorator(ClassDecorator['LockableClassDecorator', 'LockableM
 					if LockableWrapper.__decorator__.unlock_permissions[key] is None:
 						self.__locks__.remove(key)
 					else:
-						found, calling_classes = self._is_calling_class_valid(
+						found, calling_classes = is_calling_class_valid(
 							LockableWrapper.__decorator__.unlock_permissions[key]
 						)
 

@@ -15,6 +15,11 @@
 - `Lockable`'s and `Freezable`'s `__init__` removed as they had the same signature as the parent class.
 - Bug in `LockableClassDecoratorData` fixed.
   - [`frozen.lockable.LockableClassDecoratorData.__init__`](src/frozen/lockable.py): wrapper retrieval corrected.
+- `parent_cls.__load__` and `wrapped_cls.__init__` swapped
+  - [`frozen.core.ClassWrapperBase.__init__`](src/frozen/core.py): corrected `__init__` and `__load__` orders.
+- Fixed an error related to `is_calling_class_valid` in `lockable`
+  - [`frozen.lockable.LockableClassDecorator.<locals>.LockableWrapper.unlock`](src/frozen/lockable.py): fixed error.
+
 
 ## Version `0.0.5`
 
