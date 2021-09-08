@@ -27,27 +27,7 @@ class FrozenError(PermissionError):
 	pass
 
 
-def freezableclass(*args, let_freeze: bool = True, let_melt: bool = False):
-	"""
-	Decorates a class to be freezable. Same as `freezable.cls`.
-	:param args:
-	:param let_freeze: Let the user freeze the freezable object at will. If false, the `freeze()` method can not be called.
-	:param let_melt: Let the user melt the freezable object at will. If false, the `melt()` method can not be called.
-	:return: The class decorator.
-	"""
-	if args:
-		cls = args[0]
-		return freezable.cls()(cls)
-		# return FreezableClassDecorator()(cls)
-	else:
-		return freezable.cls(let_freeze=let_freeze, let_melt=let_melt)
-		# return FreezableClassDecorator(let_freeze=let_freeze, let_melt=let_melt)
-
-
 class Freezable(ClassWrapperBase['FreezableClassDecoratorData']):
-	# def __init__(self, args, kwargs, wrapper_cls: Type[Freezable]):
-	# 	ClassWrapperBase.__init__(self, args=args, kwargs=kwargs, wrapper_cls=wrapper_cls)
-
 	def __load__(self, frozen: bool = False):
 		self.__frozen__ = frozen
 
@@ -65,15 +45,18 @@ class Freezable(ClassWrapperBase['FreezableClassDecoratorData']):
 		)
 
 	def _set_frozen_state(self, frozen: bool, deep: bool) -> None:
+		# Visits only the children of freezable objects. Therefore,
+		# only the directly-accessible frozen members will be frozen/melted.
+		# The underlying rule is every object is responsible for the behavior of its own children.
 		self.__frozen__ = frozen
 
 		if deep:
-			visit_children: bool
+			is_freezable: bool
 
-			for obj in get_descendents(self, visit_children=lambda: visit_children):
-				visit_children = isinstance(obj, Freezable)
+			for obj in get_descendents(self, visit_children=lambda: is_freezable):
+				is_freezable = isinstance(obj, Freezable)
 
-				if visit_children:
+				if is_freezable:
 					obj.__frozen__ = frozen
 
 	@property
@@ -92,7 +75,7 @@ class Freezable(ClassWrapperBase['FreezableClassDecoratorData']):
 		"""
 		raise NotImplementedError(Errors.MethodNotImplemented.format(self.freeze.__qualname__))
 
-	def melt(self, deep: bool = True):
+	def melt(self, deep: bool = True) -> None:
 		"""
 		Unfreeze a Freezable object. If `deep` is `True`, also unfreeze its transitive Freezable descendents.\n
 		:param deep: Determine whether to unfreeze the descendents or not.
@@ -116,6 +99,9 @@ class Freezable(ClassWrapperBase['FreezableClassDecoratorData']):
 		return new_obj
 
 	class View(View):
+		"""
+		The view base class of frozen, which is always frozen.
+		"""
 		__frozen__ = True
 
 
@@ -161,7 +147,7 @@ class FreezableClassDecorator(ClassDecorator['FreezableClassDecorator', 'Freezab
 					)
 
 			@locked_in_view
-			def melt(self, deep: bool = True):
+			def melt(self, deep: bool = True) -> None:
 				if FreezableWrapper.__decorator__.let_melt:
 					return self._set_frozen_state(frozen=False, deep=deep)
 				else:
@@ -183,16 +169,6 @@ class FreezableClassDecoratorData(ClassDecoratorData):
 	):
 		self.let_freeze = decorator.let_freeze
 		self.let_melt = decorator.let_melt
-
-
-def freezablemethod(*args):
-	if args:
-		method = args[0]
-		return freezable.mth()(method)
-		# return FreezableMethodDecorator()(method)
-	else:
-		return freezable.mth()
-		# return FreezableMethodDecorator()
 
 
 class FreezableMethodDecorator(MethodDecorator['FreezableClassDecorator', 'FreezableMethodDecorator']):
@@ -218,9 +194,34 @@ class FreezableMethodDecorator(MethodDecorator['FreezableClassDecorator', 'Freez
 		return super().__call__(method, freezable_wrapper)
 
 
+def freezableclass(*args, let_freeze: bool = True, let_melt: bool = False):
+	"""Fancy alternative to `freezable.cls`, requires no parenthesis"""
+	if args:
+		cls = args[0]
+		return freezable.cls()(cls)
+	else:
+		return freezable.cls(let_freeze=let_freeze, let_melt=let_melt)
+
+
+def freezablemethod(*args):
+	"""Fancy alternative to `freezable.mth`, requires no parenthesis"""
+	if args:
+		method = args[0]
+		return freezable.mth()(method)
+	else:
+		return freezable.mth()
+
+
 class ModuleElements(ModuleElements):
 	@staticmethod
 	def cls(let_freeze: bool = True, let_melt: bool = False) -> FreezableClassDecorator:
+		"""
+		Decorates a class to be freezable
+		:param let_freeze: Let the user freeze the freezable object at will.
+		If false, the `freeze()` method can not be called.
+		:param let_melt: Let the user melt the freezable object at will. If false, the `melt()` method can not be called.
+		:return: The class decorator.
+		"""
 		return FreezableClassDecorator(let_freeze=let_freeze, let_melt=let_melt)
 
 	@staticmethod
@@ -233,5 +234,4 @@ FreezableClassDecorator._class_wrapper_base = Freezable
 FreezableClassDecorator._method_decorator = FreezableMethodDecorator
 FreezableMethodDecorator._decorator_function = freezablemethod
 FreezableMethodDecorator._class_decorator = FreezableClassDecorator
-# freezable = ModuleElements(mth=freezablemethod, cls=freezableclass)
 freezable = ModuleElements()

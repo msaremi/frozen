@@ -20,6 +20,9 @@ class Errors(Errors):
 
 
 class AlienError(PermissionError):
+	"""
+	Raised when an alien object tries to get access to a private member.
+	"""
 	pass
 
 
@@ -37,17 +40,6 @@ class Alienatable(ClassWrapperBase['AlienatableClassDecoratorData']):
 				None if calling_cls is None else calling_cls.__qualname__,
 				method.__qualname__
 		))
-
-
-def alienatableclass(
-		*args,
-		friends: Dict[str, Optional[Set[type]]] | Set[type] = None
-):
-	if args:
-		cls = args[0]
-		return alienatable.cls()(cls)
-	else:
-		return alienatable.cls(friends=friends)
 
 
 class AlienatableClassDecorator(ClassDecorator['AlienatableClassDecorator', 'AlienatableMethodDecorator']):
@@ -88,10 +80,12 @@ class AlienatableClassDecoratorData(ClassDecoratorData):
 			decorator: AlienatableClassDecorator,
 			cls: type
 	):
+		"""
+		Coalesces data from the previous wrapper and current wrapper classes.
+		:param decorator: The class decorator.
+		:param cls: The decorated class.
+		"""
 		self.friends = decorator.friends
-
-		# for spec in decorator.method_specs:
-		# 	self.friends.update(spec.method_decorator.friend_list)
 
 		if issubclass(cls, Alienatable):
 			wrapper = AlienatableClassDecorator.get_wrapper_class(cls)
@@ -101,14 +95,6 @@ class AlienatableClassDecoratorData(ClassDecoratorData):
 					self.friends[key] = cls_set
 				else:
 					self.friends[key].update(cls_set)
-
-
-def alienatablemethod(*args, friend_list: Iterable[str] | str = None):
-	if args:
-		method = args[0]
-		return alienatable.mth()(method)
-	else:
-		return alienatable.mth(friend_list=friend_list)
 
 
 class AlienatableMethodDecorator(MethodDecorator['AlienatableClassDecorator', 'AlienatableMethodDecorator']):
@@ -150,6 +136,27 @@ class AlienatableMethodDecorator(MethodDecorator['AlienatableClassDecorator', 'A
 				)
 
 		return super().__call__(method, alienatable_wrapper)
+
+
+def alienatableclass(
+		*args,
+		friends: Dict[str, Optional[Set[type]]] | Set[type] = None
+):
+	"""Fancy alternative to `alienatable.cls`, requires no parenthesis"""
+	if args:
+		cls = args[0]
+		return alienatable.cls()(cls)
+	else:
+		return alienatable.cls(friends=friends)
+
+
+def alienatablemethod(*args, friend_list: Iterable[str] | str = None):
+	"""Fancy alternative to `alienatable.mth`, requires no parenthesis"""
+	if args:
+		method = args[0]
+		return alienatable.mth()(method)
+	else:
+		return alienatable.mth(friend_list=friend_list)
 
 
 class ModuleElements(ModuleElements):

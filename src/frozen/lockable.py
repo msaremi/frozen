@@ -24,33 +24,28 @@ class Errors(Errors):
 
 
 class LockedError(PermissionError):
+	"""
+	Raised when locking an object is not allowed.
+	"""
 	pass
 
 
 class UnlockError(PermissionError):
+	"""
+	Raised when locking an object is not allowed.
+	"""
 	pass
 
 
 class LockError(PermissionError):
+	"""
+	Raised when calling a locked member of an object.
+	"""
 	pass
-
-
-def lockableclass(
-		*args,
-		lock_permissions: Dict[str, Optional[Set[type]]] = None,
-		unlock_permissions: Dict[str, Optional[Set[type]]] = None
-):
-	if args:
-		cls = args[0]
-		return lockable.cls()(cls)
-	else:
-		return lockable.cls(lock_permissions=lock_permissions, unlock_permissions=unlock_permissions)
 
 
 class Lockable(ClassWrapperBase['LockableClassDecoratorData']):
 	__locks__: Set[str]
-	# def __init__(self, args: tuple, kwargs: dict, wrapper_cls: Type[Lockable]):
-	# 	ClassWrapperBase.__init__(self, args=args, kwargs=kwargs, wrapper_cls=wrapper_cls)
 
 	def __load__(self, locks: Iterable[str] = None) -> None:
 		self.__locks__ = set()
@@ -58,26 +53,6 @@ class Lockable(ClassWrapperBase['LockableClassDecoratorData']):
 		if locks is not None and locks:
 			for key in locks:
 				self.lock(key)
-
-	# @staticmethod
-	# def _is_calling_class_valid(allowed_classes: Set[type] | None) -> Tuple[bool, List[type | None]]:
-	# 	calling_classes = []
-	# 	found = False
-	#
-	# 	for _, cls in trace_execution(allowed_classes):
-	# 		if cls is not None:
-	# 			found = next(
-	# 				(True for c in allowed_classes if issubclass(cls, c)),
-	# 				False
-	# 			)
-	#
-	# 			calling_classes.append(cls)
-	#
-	# 		if found:
-	# 			break
-	#
-	# 	calling_classes.append(None)
-	# 	return found, calling_classes
 
 	def lock(self, key: str) -> None:
 		"""
@@ -148,6 +123,7 @@ class Lockable(ClassWrapperBase['LockableClassDecoratorData']):
 		__view_locks__: set = None
 
 		def __init__(self, obj: Lockable):
+			# Takes a snapshot of the current locks
 			self.__view_locks__ = obj.__locks__.copy()
 
 		@property
@@ -297,14 +273,6 @@ class LockableClassDecoratorData(ClassDecoratorData):
 			self.locks.update(wrapper.__decorator__.locks)
 
 
-def lockablemethod(*args, keys: Iterable[str] = None):
-	if args:
-		method = args[0]
-		return lockable.mth()(method)
-	else:
-		return lockable.mth(keys=keys)
-
-
 class LockableMethodDecorator(MethodDecorator['LockableClassDecorator', 'LockableMethodDecorator']):
 	def __init__(self, keys: Iterable[str] = None):
 		if keys is not None:
@@ -335,9 +303,27 @@ class LockableMethodDecorator(MethodDecorator['LockableClassDecorator', 'Lockabl
 
 		return super().__call__(method, lockable_wrapper)
 
-	# @property
-	# def keys(self):
-	# 	return self._keys
+
+def lockableclass(
+		*args,
+		lock_permissions: Dict[str, Optional[Set[type]]] = None,
+		unlock_permissions: Dict[str, Optional[Set[type]]] = None
+):
+	"""Fancy alternative to `lockable.cls`, requires no parenthesis"""
+	if args:
+		cls = args[0]
+		return lockable.cls()(cls)
+	else:
+		return lockable.cls(lock_permissions=lock_permissions, unlock_permissions=unlock_permissions)
+
+
+def lockablemethod(*args, keys: Iterable[str] = None):
+	"""Fancy alternative to `lockable.mth`, requires no parenthesis"""
+	if args:
+		method = args[0]
+		return lockable.mth()(method)
+	else:
+		return lockable.mth(keys=keys)
 
 
 class ModuleElements(ModuleElements):
@@ -358,5 +344,4 @@ LockableClassDecorator._class_wrapper_base = Lockable
 LockableClassDecorator._method_decorator = LockableMethodDecorator
 LockableMethodDecorator._decorator_function = lockablemethod
 LockableMethodDecorator._class_decorator = LockableClassDecorator
-# lockable = ModuleElements(mth=lockablemethod, cls=lockableclass)
 lockable = ModuleElements()
