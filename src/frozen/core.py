@@ -31,7 +31,7 @@ class Errors:
 		"`{}` method is not callable on `{}` view objects."
 
 
-def get_members(obj: object) -> Generator[Tuple[str, Any]]:
+def get_members(obj: object, superficial: bool = False) -> Generator[Tuple[str, Any]]:
 	"""
 	Written originally by Python authors --- modified version to increase speed
 	Return all members of an object as (name, value) pairs sorted by name.
@@ -39,7 +39,7 @@ def get_members(obj: object) -> Generator[Tuple[str, Any]]:
 	"""
 	mro = (obj,) + obj.__mro__ if isinstance(obj, type) else ()
 	processed = set()
-	names = dir(obj)
+	names = list(obj.__dict__.keys()) if superficial else dir(obj)
 
 	# :dd any DynamicClassAttributes to the list of names if object is a class;
 	# this may result in duplicate entries if, for example, a virtual
@@ -92,22 +92,28 @@ def trace_execution(
 		:param code: The `code` object to get the info.
 		:return: (method, class) tuple
 		"""
-		def search_locations(search_in: Iterable[Type]):
+		def search_locations(search_in: Iterable[Type], superficial: bool = False):
 			"""
 			Gets a list of candidate classes and search them to find the owner
-			:param search_in: and Iterable of classes
-			:return: 
+			:param search_in: An Iterable of classes
+			:param superficial: Do not search the base classes
+			:return:
 			"""
 			for loc in search_in:
-				for method_name, method in get_members(loc):  # Get all methods and functions of loc
+				for method_name, method in get_members(loc, superficial):  # Get all methods and functions of loc
+					try:
+						method_name = method.__realname__
+					except AttributeError:
+						pass
+
 					if isinstance(method, (MethodType, FunctionType)) and code.co_name == method_name:
 						if code == method.__code__:  # If code equals the method's __code__ then the method is found
 							return method, loc
 						else:  # However, for static methods, if the code and function names are the same, we also search all subclasses
-							method, loc = search_locations(loc.__subclasses__())
+							sub_method, sub_loc = search_locations(loc.__subclasses__(), superficial=True)
 
-							if (method, loc) != (None, None):
-								return method, loc
+							if (sub_method, sub_loc) != (None, None):
+								return sub_method, sub_loc
 
 			return None, None
 
@@ -156,16 +162,6 @@ def is_calling_class_valid(allowed_classes: Set[type] | None) -> Tuple[bool, Lis
 
 	calling_classes.append(None)
 	return found, calling_classes
-
-
-# def get_wrapper_class(
-# 		cls: type, wrapper_type: Type[ClassWrapperBase]
-# ) -> Type[ClassWrapperBase] | type | None:
-# 	for cls in cls.__mro__:
-# 		if len(cls.__bases__) == 2 and cls.__bases__[1] == wrapper_type:
-# 			return cls
-#
-# 	return None
 
 
 def get_descendents(
@@ -708,23 +704,6 @@ class MethodSpec(Generic[ClassDecoratorType, MethodDecoratorType]):
 				self.decorated_module == other.decorated_module and
 				self.decorated_class_qualname == other.decorated_class_qualname
 		)
-
-
-# class ModuleElements:
-# 	"""
-# 	Can be inherited by internal classes.
-# 	"""
-# 	def __init__(self, method, cls):
-# 		self._mth = method
-# 		self._cls = cls
-#
-# 	@property
-# 	def method(self) -> Callable:
-# 		return self._mth
-#
-# 	@property
-# 	def cls(self) -> Callable:
-# 		return self._cls
 
 
 class ModuleElements:

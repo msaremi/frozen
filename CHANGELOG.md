@@ -6,7 +6,13 @@
 - The alienatable module was added. This makes some methods only callable by friend classes.
 - Changes in `ModuleElements` to make the decorators easier to use by increasing clarity.
   - Now, `lockable/freezable/alienatable()/.method()` require a parenthesis.
-
+- Fixed an error in `core.trace_execution` that left decorated methods undetected.
+  - [`frozen.core.trace_execution:113`](src/frozen/core.py): Replaced `loc` with `sub_loc`.
+- Fixed an error in `core.trace_execution` that cuased the function to return `(None, None)` incorrectly.
+  - [`frozen.core.trace_execution:104-107`](src/frozen/core.py): Gets `__realname__` when possible.
+- Improved the performance of `core.trace_execution` by forcing it to look for the methods in subclasses superficially.
+  - [`frozen.core.trace_execution:113`](src/frozen/core.py): invokes `search_locations` superficially for subclasses.
+  - [`frozen.core.get_members`](src/frozen/core.py): Method modified to support superficial search.
 
 ###Minor changes
 - Method `is_calling_class_valid` moved to core
