@@ -511,12 +511,15 @@ class ClassWrapperBase(Generic[ClassDecoratorDataType]):
 		)
 		# Call `__init__`'s bottom to top and then call the decorated class's `__init__`!
 		# Call `wrapped_cls.__init__` with kwargs if it is a ClassWrapper; else, with intended_kwargs.
-		if wrapped_cls == decorated_cls:
-			parent_cls.__load__(self, **augmented_kwargs)
-			wrapped_cls.__init__(self, *args, **intended_kwargs)
-		else:
-			wrapped_cls.__init__(self, *args, **kwargs)
-			parent_cls.__load__(self, **augmented_kwargs)
+		parent_cls.__load__(self, **augmented_kwargs)
+		wrapped_cls.__init__(self, *args, **(intended_kwargs if wrapped_cls == decorated_cls else kwargs))
+
+		# if wrapped_cls == decorated_cls:
+		# 	parent_cls.__load__(self, **augmented_kwargs)
+		# 	wrapped_cls.__init__(self, *args, **intended_kwargs)
+		# else:
+		# 	wrapped_cls.__init__(self, *args, **kwargs)
+		# 	parent_cls.__load__(self, **augmented_kwargs)
 
 	def __load__(self, **kwargs):
 		raise NotImplementedError(Errors.MethodNotImplemented.format(self.__load__.__qualname__))

@@ -223,10 +223,6 @@ class ModuleElements(ModuleElements):
 		"""
 		return FreezableClassDecorator(let_freeze=let_freeze, let_melt=let_melt)
 
-	# @staticmethod
-	# def cls(let_freeze: bool = True, let_melt: bool = False) -> FreezableClassDecorator:
-	# 	return FreezableClassDecorator(let_freeze=let_freeze, let_melt=let_melt)
-
 	@staticmethod
 	def method() -> FreezableMethodDecorator:
 		return FreezableMethodDecorator()
