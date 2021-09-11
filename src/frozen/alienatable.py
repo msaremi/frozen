@@ -121,12 +121,12 @@ class AlienatableMethodDecorator(MethodDecorator['AlienatableClassDecorator', 'A
 
 			if isinstance(obj, Alienatable) or isinstance(obj, View):
 				allowed_classes = self.get_valid_classes(type(obj))
-				found, calling_classes = is_calling_class_valid(allowed_classes)
+				found, calling_class = is_calling_class_valid(allowed_classes, from_frame=1)
 
 				if found:
 					return method(*args, **kwargs)
 				else:
-					obj.__alien_error__(calling_classes[0], method)
+					obj.__alien_error__(calling_class, method)
 			else:
 				raise DecorationUsageError(
 					Errors.ClassNotFinalized.format(

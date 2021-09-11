@@ -6,6 +6,7 @@ import functools
 from types import *
 from typing import *
 from collections import deque, defaultdict
+from weakref import ref
 
 
 class Errors:
@@ -29,6 +30,9 @@ class Errors:
 		"`{}` class has not been finalized using a `{}` decorator."
 	ViewMethodNotCallable = \
 		"`{}` method is not callable on `{}` view objects."
+
+
+CellType = type((lambda x: lambda: x)(None).__closure__[0])
 
 
 def get_members(obj: object, superficial: bool = False) -> Generator[Tuple[str, Any]]:
@@ -76,22 +80,18 @@ def get_members(obj: object, superficial: bool = False) -> Generator[Tuple[str, 
 		processed.add(key)
 
 
-def trace_execution(
-		location_hint: Iterable[Type] | None = None
-) -> Generator[Tuple[MethodType | FunctionType, type] | Tuple[None, None]]:
-	"""
-	Yields the list of (method, class)'s of the current execution frame.
-	If the methods are not `@staticmethod` the algorithm finds the classes directly.
-	If the methods are `@staticmethod` the algorithm searches in `locations_hint` and their subclasses.\n
-	:param location_hint: List of candidate classes to search in.
-	:return: Yields (method, location) frame-by-frame in execution stack.
-	"""
-	def get_code_info(code):
+class ExecutionTracer:
+	code_method_cache = dict()
+	code_location_cache = dict()
+
+	@staticmethod
+	def _get_code_info(frame: FrameType, location_hint: Iterable[Type] | None = None, ):
 		"""
 		Given a code object, returns the (method, class) that this code belongs to.
-		:param code: The `code` object to get the info.
+		# :param code: The `code` object to get the info.
 		:return: (method, class) tuple
 		"""
+
 		def search_locations(search_in: Iterable[Type], superficial: bool = False):
 			"""
 			Gets a list of candidate classes and search them to find the owner
@@ -99,27 +99,47 @@ def trace_execution(
 			:param superficial: Do not search the base classes
 			:return:
 			"""
+
+			def search_closure(closure: Tuple[CellType]):
+				for cell in closure:
+					cell_contents = cell.cell_contents
+
+					if isinstance(cell_contents, (MethodType, FunctionType)) and cell_contents.__name__ == mtd_name:
+						if code == cell_contents.__code__:
+							return cell_contents, loc
+						else:
+							return search_closure(cell_contents.__closure__)
+
+				return None, None
+
 			for loc in search_in:
-				for method_name, method in get_members(loc, superficial):  # Get all methods and functions of loc
-					try:
-						method_name = method.__realname__
-					except AttributeError:
-						pass
+				if loc not in visited:
+					visited.add(loc)
 
-					if isinstance(method, (MethodType, FunctionType)) and code.co_name == method_name:
-						if code == method.__code__:  # If code equals the method's __code__ then the method is found
-							return method, loc
-						else:  # However, for static methods, if the code and function names are the same, we also search all subclasses
-							sub_method, sub_loc = search_locations(loc.__subclasses__(), superficial=True)
+					for mtd_name, mtd in get_members(loc, superficial):  # Get all methods and functions of loc
+						if isinstance(mtd, (MethodType, FunctionType)) and code.co_name == mtd_name:
+							if code == mtd.__code__:  # If code equals the method's __code__ then the method is found
+								return mtd, loc
+							else:  # If they are not equal, we'll also search in the closure, which is useful when methods are decorated
+								cell_method, cell_loc = search_closure(mtd.__closure__)
 
-							if (sub_method, sub_loc) != (None, None):
-								return sub_method, sub_loc
+								if (cell_method, cell_loc) != (None, None):
+									return cell_method, cell_loc
+								else:  # Also, for static methods, if the code and function names are the same, we also search all subclasses
+									sub_method, sub_loc = search_locations(loc.__subclasses__(), superficial=True)
+
+									if (sub_method, sub_loc) != (None, None):
+										return sub_method, sub_loc
 
 			return None, None
 
+		visited: Set[Type] = set()
+		code = frame.f_code
+
 		if code.co_argcount > 0:  # if code has at least one positional argument
 			args = inspect.getargs(code).args  # get the arguments of the method: looking for 'self' or 'cls'
-			first_arg = inspect.getargvalues(frame).locals[args[0]]  # first arg is either 'self' or 'cls' or neither
+			first_arg = inspect.getargvalues(frame).locals[
+				args[0]]  # first arg is either 'self' or 'cls' or neither
 			cls = first_arg if isinstance(first_arg, type) else type(first_arg)  # get the 'cls' object
 		else:
 			cls = None
@@ -129,39 +149,79 @@ def trace_execution(
 			[] if location_hint is None else location_hint
 		))
 
-	try:  
-		# Check if `get_code_info` exists as an attribute; else create it.
-		trace_execution.get_code_info
-	except AttributeError:
-		# It sets the cached version of `get_code_info`. Caching keeps it from calling 
-		# `get_code_info` over and over 
-		trace_execution.get_code_info = functools.lru_cache()(get_code_info)
+	@staticmethod
+	def _get_code_info_from_cache(code: CodeType):
+		method_ref = ExecutionTracer.code_method_cache[id(code)]
+		location_ref = ExecutionTracer.code_location_cache[id(code)]
 
-	frame = inspect.currentframe().f_back  # `f_back` to get the caller frame
+		if method_ref is None:
+			method = None
+		else:
+			if method_ref() is not None:
+				method = method_ref()
+			else:
+				raise KeyError()
 
-	while frame:
-		yield trace_execution.get_code_info(frame.f_code)
-		frame = frame.f_back
+		if location_ref is None:
+			location = None
+		else:
+			if location_ref() is not None:
+				location = location_ref()
+			else:
+				raise KeyError()
+
+		return method, location
+
+	@staticmethod
+	def _update_code_info_cache(code: CodeType, method, location):
+		if method is None:
+			ExecutionTracer.code_method_cache[id(code)] = None
+		else:
+			ExecutionTracer.code_method_cache[id(code)] = ref(method)
+
+		if method is None:
+			ExecutionTracer.code_location_cache[id(code)] = None
+		else:
+			ExecutionTracer.code_location_cache[id(code)] = ref(location)
+
+	def __call__(
+			self,
+			location_hint: Iterable[Type] | None = None,
+			skip_frames: int = 1
+	):
+		frame = inspect.currentframe()
+
+		for i in range(skip_frames):
+			frame = frame.f_back
+
+		while frame:
+			try:
+				method, location = ExecutionTracer._get_code_info_from_cache(frame.f_code)
+			except KeyError:
+				method, location = ExecutionTracer._get_code_info(frame, location_hint)
+				ExecutionTracer._update_code_info_cache(frame.f_code, method, location)
+
+			yield method, location
+			frame = frame.f_back
 
 
-def is_calling_class_valid(allowed_classes: Set[type] | None) -> Tuple[bool, List[type | None]]:
-	calling_classes = []
+def is_calling_class_valid(
+		allowed_classes: Set[type] | None,
+		from_frame: int = 0
+) -> Tuple[bool, type | None]:
+	calling_class = None
 	found = False
+	_, cls = next(trace_execution(allowed_classes, skip_frames=from_frame + 2))
 
-	for _, cls in trace_execution(allowed_classes):
-		if cls is not None:
-			found = next(
-				(True for c in allowed_classes if issubclass(cls, c)),
-				False
-			)
+	if cls is not None:
+		found = next(
+			(True for c in allowed_classes if issubclass(cls, c)),
+			False
+		)
 
-			calling_classes.append(cls)
+		calling_class = cls
 
-		if found:
-			break
-
-	calling_classes.append(None)
-	return found, calling_classes
+	return found, calling_class
 
 
 def get_descendents(
@@ -281,6 +341,7 @@ def locked_in_view(method: FunctionType | MethodType):
 		else:
 			return method(self, *args, **kwargs)
 
+	wraps(method_wrapper, method)
 	return method_wrapper
 
 
@@ -731,3 +792,4 @@ current_decorator_specs: DefaultDict[Type, Set[MethodSpec[ClassDecoratorType, Me
 Hold information about the current class that is being decorated. 
 Used to make sure that the process is being done correctly.
 """
+trace_execution = ExecutionTracer()

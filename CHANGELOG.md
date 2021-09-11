@@ -1,5 +1,18 @@
 # Changelog
 
+## Version `0.0.7`
+
+### Major changes
+- `core.is_calling_class_valid` re-implemented. Now it checks only one calling method, not a list of methods. 
+  This disallows callbacks from locking/unlocking methods.
+  - [`frozen.core.is_calling_class_valid`](src/frozen/core.py): Method rewritten.
+- Re-implemented `core.trace_execution`. Fixed its errors related to caching. Now, it does not use `@functools.lru_cache`,
+  which interfered with the function closure.
+  Plus, it can handle decorated methods.
+  - [`frozen.core.trace_execution`](src/frozen/core.py): Method removed and its implementation replaced with 
+    the class `frozen.core.ExecutionTracer`.
+  - [`frozen.core.ExecutionTracer`](src/frozen/core.py): Class added.
+
 ## Version `0.0.6`
 
 ### Major changes

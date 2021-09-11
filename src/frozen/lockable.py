@@ -97,7 +97,7 @@ class Lockable(ClassWrapperBase['LockableClassDecoratorData']):
 		:return:
 		"""
 		raise LockError(Errors.LockingNotAllowed.format(
-			None if calling_cls is None else calling_cls.__qualname__, type(self).__qualname__, key
+			"NoneType" if calling_cls is None else calling_cls.__qualname__, type(self).__qualname__, key
 		))
 
 	def __unlock_error__(self, key: str, calling_cls: type) -> None:
@@ -108,7 +108,7 @@ class Lockable(ClassWrapperBase['LockableClassDecoratorData']):
 		:return: None
 		"""
 		raise UnlockError(Errors.UnlockingNotAllowed.format(
-			None if calling_cls is None else calling_cls.__qualname__, type(self).__qualname__, key
+			"NoneType" if calling_cls is None else calling_cls.__qualname__, type(self).__qualname__, key
 		))
 
 	def __lock_key_error__(self, key: str):
@@ -195,14 +195,15 @@ class LockableClassDecorator(ClassDecorator['LockableClassDecorator', 'LockableM
 					if LockableWrapper.__decorator__.lock_permissions[key] is None:
 						self.__locks__.add(key)
 					else:
-						found, calling_classes = is_calling_class_valid(
-							LockableWrapper.__decorator__.lock_permissions[key]
+						found, calling_class = is_calling_class_valid(
+							LockableWrapper.__decorator__.lock_permissions[key],
+							from_frame=2
 						)
 
 						if found:
 							self.__locks__.add(key)
 						if not found:
-							self.__lock_error__(key, calling_classes[0])
+							self.__lock_error__(key, calling_class)
 				else:
 					self.__lock_key_error__(key)
 
@@ -212,8 +213,9 @@ class LockableClassDecorator(ClassDecorator['LockableClassDecorator', 'LockableM
 					if LockableWrapper.__decorator__.unlock_permissions[key] is None:
 						self.__locks__.remove(key)
 					else:
-						found, calling_classes = is_calling_class_valid(
-							LockableWrapper.__decorator__.unlock_permissions[key]
+						found, calling_class = is_calling_class_valid(
+							LockableWrapper.__decorator__.unlock_permissions[key],
+							from_frame=2
 						)
 
 						if found:
@@ -222,7 +224,7 @@ class LockableClassDecorator(ClassDecorator['LockableClassDecorator', 'LockableM
 							except KeyError:
 								pass
 						else:
-							self.__unlock_error__(key, calling_classes[0])
+							self.__unlock_error__(key, calling_class)
 				else:
 					self.__lock_key_error__(key)
 
